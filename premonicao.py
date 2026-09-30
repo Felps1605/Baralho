@@ -4,15 +4,13 @@ from fastapi import FastAPI, Response, Cookie, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pathlib import Path
 
-
-from collections.abc import Iterator
 from enum import Enum
 
-from baralho import deck, carta,  valores_padrao
+from jogo_premonicao.baralho import deck, carta,  valores_padrao
 
 app = FastAPI()
 
-player_id = 1
+
 
 
 class turno:
@@ -38,13 +36,13 @@ def ordem_a_partir_de(mesa: list[jogador], inicio: int)-> list[jogador]:
     return mesa[inicio:] + mesa[:inicio]
     
 class jogador:
-    def __init__(self, nome: str = "Jogador"):
+    def __init__(self, id: int, nome: str = "Jogador"):
 
-        global player_id
+        
 
-        self.nome: str = (f"Jogador {player_id}"if nome == "Jogador" else nome)
-        self.id : int = player_id
-        player_id += 1
+        self.nome: str = (f"Jogador {id}"if nome == "Jogador" else nome)
+        self.id : int = id
+        
         
         self.admin: bool = False
         self.pontos: int = 0
@@ -109,12 +107,17 @@ class partida:
         self.rodada_atual: rodada | None = None
         self.rodadas: list[rodada] = []
 
+        self.player_id = 1 # variavel global usada pra atribuir id dos jogadores
+        self.aviso: str | None = None
+
     def nova_rodada(self, n_cartas: int):
 
-        self.rodada_atual = rodada( turno(ordem_a_partir_de(jogo.mesa, n_cartas - 1)), n_cartas) 
-
-        for j in jogo.mesa:
-            j.mao.comprar(jogo.rodada_atual.bolo, n_cartas)
+        self.rodada_atual = rodada( turno(ordem_a_partir_de(self.mesa, n_cartas - 1)), n_cartas) 
+        self.aviso = None
+        
+        for j in self.mesa:
+            j.mao.cartas = []
+            j.mao.comprar(self.rodada_atual.bolo, n_cartas)
     
     def reiniciar(self):
         # mantém os jogadores na sala e zera todo o resto
@@ -126,6 +129,13 @@ class partida:
         self.numero_de_rodadas = 0
         self.rodada_atual = None
         self.rodadas = []
+
+        self.aviso = None
+
+    def reiniciar_rodada(self, n_cartas: int):
+        self.nova_rodada(n_cartas)
+        
+
 
 
 
@@ -155,14 +165,16 @@ def entrar(nome: str, response: Response, sessao: str | None = Cookie(default = 
             print("Jogador ja está no jogo")
             return {"mensagem" : "Jogador ja está no jogo"}
 
-    nome_final = f"Jogador {player_id}" if nome == "Jogador" else nome
+    nome_final = f"Jogador {jogo.player_id}" if nome == "Jogador" else nome
     if nome_final in [j.nome for j in jogo.sessoes.values()]:
         return {"mensagem" : "Nome ja está em uso, escolha outro"}
     
     if jogo.status is status_partida.INICIO:
         token = secrets.token_urlsafe(16) # gerando um token aleatorio
-        novo_jogador = jogador(nome)
-        if novo_jogador.id == 1:
+        novo_jogador = jogador(nome, jogo.player_id)
+        jogo.player_id += 1
+        
+        if not any(j.admin for j in jogo.sessoes.values()):
             novo_jogador.admin = True
         jogo.sessoes[token] = novo_jogador # criando uma correspondencia [token : jogador ]no dicionario sessoes 
         response.set_cookie(key = "sessao", value = token, httponly = True) # configurando o cookie
@@ -209,7 +221,9 @@ def consultar_estado_da_partida():
               "rodada": numero_rodada,
               "total_de_rodadas": jogo.numero_de_rodadas,
               "fase": rodada.status.name,
-              "vez_de": None}
+              "vez_de": None,
+              "aviso": jogo.aviso
+              }
 
     if rodada.status is status_rodada.PALPITES:
         estado["vez_de"] = rodada.turno_palpites.atual.nome
@@ -403,27 +417,46 @@ def nova_partida(usuario: jogador = Depends(usuario_atual)):
     return {"mensagem": "Nova partida: aguardando jogadores"}
 
 @app.post("/partida/sair")
-def sair_da_partida(usuario: jogador = Depends(usuario_atual)):
-    raise NotImplementedError("Função ainda em construção")
-    #de onde eu preciso tirar esse jogador? IMPLEMENTAR
-    #  dos registros de sessao e da mesa
-    #  É PRECISO REINICIAR A RODADA - criar função para isso, algum tipo de flag e mensagem também provavelmente
+def sair_da_partida(response: Response, sessao: str | None = Cookie(default = None)):
     
-    
-    
+    usuario = usuario_atual(sessao)
+    del jogo.sessoes[sessao]
+    response.delete_cookie("sessao")
 
-    #  se a quantidade total de jogadores chegar a menos doq 2, a partida encerra automaticamente
-    if (len(jogo.mesa) > 2):
-        jogo.status = status_partida.FINAL
-        return {"mensagem": "Partida encerrada por numero de jogadores insuficiente"}
+    #quando o ultimo jogador sai a partida volta ao estado inicial 
+    if not jogo.sessoes:
+        jogo.reiniciar()
+    
+        return {"mensagem": "Você saiu da partida"}
         
     #  quando o admin sai do jogo, o proximo menor id vira o novo admin
-    if(usuario.admin):
-        ids = [j.player_id for j in jogo.mesa]
+    if usuario.admin:
+        ids = [j.id for j in jogo.sessoes.values()]
         menor_id = min(ids) 
         indice_menor_id = ids.index(menor_id)
-        novo_admin = jogo.mesa[indice_menor_id]
+        novo_admin = list(jogo.sessoes.values())[indice_menor_id]
+        #novo_admin = min(jogo.sessoes.values(), key=lambda j: j.id)
         novo_admin.admin = True
+
+    if usuario in jogo.mesa:
+        jogo.mesa.remove(usuario)
+        
+        if jogo.status == status_partida.RODADAS:
+    
+            if (len(jogo.mesa) < 2):
+                
+                jogo.status = status_partida.FINAL
+                jogo.aviso = f"{usuario.nome} saiu da partida e não há jogadores o suficiente para continuar. Fim da partida"
+            
+            else:
+                
+                jogo.reiniciar_rodada(jogo.rodada_atual.numero_de_cartas)
+                jogo.aviso = f"{usuario.nome} saiu da partida. A rodada {jogo.rodada_atual.numero_de_cartas} vai ser reiniciada"
+
+        
+    return {"mensagem": "Você saiu da partida"}
+    
+        
     
     
 
