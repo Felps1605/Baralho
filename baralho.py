@@ -1,4 +1,5 @@
 import random
+import sys
 
 valores_padrao = {
     "A": 1,
@@ -26,7 +27,7 @@ naipes = [
 
 class carta:
     
-    def __init__(self, valor_char, valor , naipe: str):
+    def __init__(self, valor_char: str, valor: int , naipe: str):
         self.valor_char: str = valor_char
         self.valor : int=  valor
         self.naipe : str= naipe
@@ -44,7 +45,7 @@ class deck:
         self.rotulo : str = rotulo
 
     
-    def construir_deck(self: deck,  naipes: list[str] | None = naipes, valores: dict[str,int] | None = valores_padrao, ):
+    def construir_deck(self: deck,  naipes: list[str] = naipes, valores: dict[str,int] = valores_padrao, ):
         self.cartas = []
         
         for naipe in naipes:
@@ -84,5 +85,20 @@ class deck:
         for bolo in bolos:
             self.cartas.extend(bolo.cartas)
             bolo.cartas = []
+
+    def maior_carta(self: deck, naipe_trunfo: str | None = None)-> int: #devolve o indice da maior carta
+
+        minimo_inteiro = -sys.maxsize - 1
+        maior_valor = minimo_inteiro
+        indice: int      
+        for i, card in enumerate(self.cartas):
+            valor = card.valor
+            if card.naipe == naipe_trunfo:
+                valor += 1000
+            if valor > maior_valor:
+                maior_valor = valor
+                indice = i
+                
+        return indice 
         
 
