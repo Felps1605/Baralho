@@ -1,6 +1,9 @@
 import secrets
 import uvicorn
 from fastapi import FastAPI, Response, Cookie, Depends, HTTPException
+from fastapi.responses import FileResponse
+from pathlib import Path
+
 
 from collections.abc import Iterator
 from enum import Enum
@@ -112,8 +115,24 @@ class partida:
 
         for j in jogo.mesa:
             j.mao.comprar(jogo.rodada_atual.bolo, n_cartas)
+    
+    def reiniciar(self):
+        # mantém os jogadores na sala e zera todo o resto
+        for j in self.sessoes.values():
+            j.pontos = 0
+            j.mao.cartas = []
+        self.status = status_partida.INICIO
+        self.mesa = []
+        self.numero_de_rodadas = 0
+        self.rodada_atual = None
+        self.rodadas = []
 
 
+
+
+@app.get("/")
+def pagina():
+    return FileResponse(Path(__file__).parent / "index.html")
 
 
 jogo = partida()
@@ -122,6 +141,12 @@ def usuario_atual(sessao: str | None = Cookie(default = None)) -> jogador:
     if sessao is None or sessao not in jogo.sessoes:
         raise HTTPException(status_code = 401, detail = "Sem sessão válida")
     return jogo.sessoes[sessao] #devolve o jogador que possui a chave sessao
+
+@app.get("/eu")
+def quem_sou_eu(usuario: jogador = Depends(usuario_atual)):
+    return {"nome": usuario.nome, "id": usuario.id, "admin": usuario.admin}
+
+
 
 @app.post("/entrar")
 def entrar(nome: str, response: Response, sessao: str | None = Cookie(default = None)):
@@ -152,7 +177,7 @@ def ver_mao(usuario: jogador = Depends(usuario_atual)):
 
 
 @app.get("/partida/rodada/palpites")
-def ver_palpites(usuario: jogador = Depends(usuario_atual)):
+def ver_palpites():
     if jogo.rodada_atual is not None:
         soma = sum(jogo.rodada_atual.palpites.values())
         palpites = {j.nome: p for j, p in jogo.rodada_atual.palpites.items()}
@@ -160,7 +185,7 @@ def ver_palpites(usuario: jogador = Depends(usuario_atual)):
     return {"mensagem": "Não há rodadas e palpites ainda"}
 
 @app.get("/partida/rodada/carta")
-def ver_carta_da_rodada(usuario: jogador = Depends(usuario_atual)):
+def ver_carta_da_rodada():
     if jogo.rodada_atual is not None:
         return jogo.rodada_atual.carta_da_rodada
     return {"mensagem": "Não há uma carta da rodada no momento"}
@@ -333,6 +358,74 @@ def fazer_jogada(indice: int, usuario: jogador = Depends(usuario_atual)):
     resultados["pontuações"] = {j.nome: j.pontos for j in jogo.mesa} 
     return {"mensagem": mensagem, "resultados": resultados}
 
+def cartas_na_mesa(j: jogada) -> list[dict]:
+    # o monte recebe as cartas na mesma ordem do turno da jogada
+    return [{"jogador": jog.nome, "carta": c} for jog, c in zip(j.turno_jogada.ordem, j.monte.cartas)]
+
+def placar_da_rodada(r: rodada) -> list[dict]:
+    return [{"nome": j.nome, "palpite": r.palpites.get(j), "vitorias": r.vitorias[j]} for j in r.turno_palpites.ordem]
+
+@app.get("/partida/mesa")
+def ver_mesa():
+    r = jogo.rodada_atual
+    if r is None:
+        return {"trunfo": None, "jogada_atual": [], "ultima_jogada": None, "placar_rodada": [], "ultima_rodada": None}
+
+    # logo que uma rodada nova começa, a última jogada ainda está na rodada anterior
+    jogadas_feitas = r.jogadas or (jogo.rodadas[-1].jogadas if jogo.rodadas else [])
+    ultima_jogada = jogadas_feitas[-1] if jogadas_feitas else None
+    ultima_rodada = jogo.rodadas[-1] if jogo.rodadas else None
+
+    return {
+        "trunfo": r.carta_da_rodada,
+        "jogada_atual": cartas_na_mesa(r.jogada_atual) if r.jogada_atual else [],
+        "ultima_jogada": {"cartas": cartas_na_mesa(ultima_jogada), "vencedor": ultima_jogada.vencedor.nome} if ultima_jogada else None,
+        "placar_rodada": placar_da_rodada(r),
+        "ultima_rodada": {"numero": ultima_rodada.numero_de_cartas, "placar": placar_da_rodada(ultima_rodada)} if ultima_rodada else None,
+    }
+
+@app.post("/partida/encerrar")
+def encerrar_partida(usuario: jogador = Depends(usuario_atual)):
+    if not usuario.admin:
+        return {"mensagem": "Apenas o administrador pode encerrar a partida"}
+    if jogo.status is status_partida.FINAL:
+        return {"mensagem": "A partida já está encerrada"}
+    jogo.status = status_partida.FINAL
+    return {"mensagem": "Partida encerrada pelo administrador"}
+
+@app.post("/partida/nova")
+def nova_partida(usuario: jogador = Depends(usuario_atual)):
+    if not usuario.admin:
+        return {"mensagem": "Apenas o administrador pode começar uma nova partida"}
+    if jogo.status is not status_partida.FINAL:
+        return {"mensagem": "Encerre a partida atual antes de começar outra"}
+    jogo.reiniciar()
+    return {"mensagem": "Nova partida: aguardando jogadores"}
+
+@app.post("/partida/sair")
+def sair_da_partida(usuario: jogador = Depends(usuario_atual)):
+    raise NotImplementedError("Função ainda em construção")
+    #de onde eu preciso tirar esse jogador? IMPLEMENTAR
+    #  dos registros de sessao e da mesa
+    #  É PRECISO REINICIAR A RODADA - criar função para isso, algum tipo de flag e mensagem também provavelmente
+    
+    
+    
+
+    #  se a quantidade total de jogadores chegar a menos doq 2, a partida encerra automaticamente
+    if (len(jogo.mesa) > 2):
+        jogo.status = status_partida.FINAL
+        return {"mensagem": "Partida encerrada por numero de jogadores insuficiente"}
+        
+    #  quando o admin sai do jogo, o proximo menor id vira o novo admin
+    if(usuario.admin):
+        ids = [j.player_id for j in jogo.mesa]
+        menor_id = min(ids) 
+        indice_menor_id = ids.index(menor_id)
+        novo_admin = jogo.mesa[indice_menor_id]
+        novo_admin.admin = True
+    
+    
 
 if __name__ == "__main__":
-    uvicorn.run("premonicao2:app", host="127.0.0.5", port=8000, reload = True)
+    uvicorn.run("premonicao2:app", host= "0.0.0.0", port=8000, reload = True)
