@@ -428,4 +428,4 @@ def sair_da_partida(usuario: jogador = Depends(usuario_atual)):
     
 
 if __name__ == "__main__":
-    uvicorn.run("premonicao2:app", host= "0.0.0.0", port=8000, reload = True)
+    uvicorn.run("premonicao:app", host= "0.0.0.0", port=8000, reload = True)
