@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Premonição</title>
+<style>
+  :root {
+    --bg: #f3f0e8;
+    --surface: #ffffff;
+    --text: #1d1d1f;
+    --muted: #6b6b70;
+    --line: #e0dbcf;
+    --felt: #1f6b4a;
+    --felt-borda: #16563a;
+    --destaque: #d98a1a;
+    --destaque-texto: #ffffff;
+    --ok: #2e7d32;
+    --erro: #c62828;
+    --carta: #fffdf8;
+    --carta-borda: #d6d0c2;
+    --vermelho: #c62828;
+    --preto: #1d1d1f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121412;
+      --surface: #1d201e;
+      --text: #eceeed;
+      --muted: #9aa19d;
+      --line: #2e3430;
+      --felt: #17543a;
+      --felt-borda: #0f3d29;
+      --ok: #66bb6a;
+      --erro: #ef5350;
+      --carta-borda: #bdb7a9;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 16px;
+    line-height: 1.4;
+  }
+  main { max-width: 560px; margin: 0 auto; padding: 16px 16px 96px; }
+
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  h1 { font-size: 1.4rem; margin: 0; }
+  h2 { font-size: 1rem; margin: 0 0 8px; color: var(--muted); font-weight: 600; }
+  .eu { display: flex; align-items: center; gap: 8px; font-size: .9rem; color: var(--muted); }
+  .conexao { width: 10px; height: 10px; border-radius: 50%; background: var(--ok); flex: none; }
+  .conexao.off { background: var(--erro); }
+
+  .painel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+  .escondido { display: none !important; }
+  .nota { color: var(--muted); font-size: .9rem; margin: 8px 0 0; }
+
+  input {
+    font: inherit; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text); width: 100%;
+  }
+  button {
+    font: inherit; font-weight: 600; padding: 10px 16px; border-radius: 8px; border: none;
+    background: var(--felt); color: #fff; cursor: pointer;
+  }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .linha { display: flex; gap: 8px; }
+  .linha input { flex: 1; }
+
+  .lista { list-style: none; margin: 0; padding: 0; }
+  .lista li { padding: 8px 0; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; }
+  .lista li:last-child { border-bottom: none; }
+  .tag { font-size: .75rem; padding: 2px 8px; border-radius: 99px; background: var(--line); color: var(--text); }
+
+  /* barra de status */
+  .status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .status .rodada { font-weight: 700; }
+  .vez { margin-left: auto; font-weight: 600; }
+  .vez.minha { background: var(--destaque); color: var(--destaque-texto); padding: 4px 12px; border-radius: 99px; }
+
+  /* mesa */
+  .mesa {
+    background: var(--felt); border: 3px solid var(--felt-borda); border-radius: 16px;
+    padding: 16px; color: #fff; margin-bottom: 12px;
+  }
+  .mesa-topo { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .mesa-topo small { opacity: .8; }
+  .monte { display: flex; flex-wrap: wrap; gap: 12px; min-height: 104px; align-items: flex-start; }
+  .monte figure { margin: 0; text-align: center; font-size: .8rem; }
+  .monte figcaption { margin-top: 4px; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .monte .vazio { opacity: .7; font-size: .9rem; align-self: center; }
+  .ultima { margin-top: 12px; font-size: .9rem; opacity: .9; }
+
+  /* cartas */
+  .carta {
+    width: 56px; height: 80px; border-radius: 8px; background: var(--carta); border: 1px solid var(--carta-borda);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: var(--preto); font-weight: 700; padding: 0; box-shadow: 0 1px 2px rgba(0,0,0,.2);
+  }
+  .carta .valor { font-size: 1.2rem; line-height: 1; }
+  .carta .naipe { font-size: 1.4rem; line-height: 1; }
+  .carta.vermelha { color: var(--vermelho); }
+  .carta.pequena { width: 44px; height: 62px; }
+  .carta.pequena .valor { font-size: 1rem; }
+  .carta.pequena .naipe { font-size: 1.1rem; }
+  button.carta { cursor: pointer; transition: transform .1s; }
+  button.carta:not(:disabled):hover, button.carta:not(:disabled):focus-visible { transform: translateY(-6px); }
+  button.carta:disabled { opacity: 1; cursor: default; }
+  .mao.jogavel button.carta { outline: 2px solid var(--destaque); outline-offset: 2px; }
+
+  .mao { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  /* palpites */
+  .opcoes { display: flex; flex-wrap: wrap; gap: 8px; }
+  .opcoes button { min-width: 48px; }
+
+  /* tabelas */
+  table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+  th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: .8rem; }
+  td.num, th.num { text-align: center; }
+  tr.da-vez td { font-weight: 700; }
+  tr.sou-eu td.nome::after { content: " (você)"; color: var(--muted); font-weight: 400; }
+  .acertou { color: var(--ok); font-weight: 700; }
+  .errou { color: var(--erro); }
+
+  /* administrador */
+  button.perigo { background: transparent; color: var(--erro); border: 1px solid var(--erro); }
+  button.largo { width: 100%; }
+  button.secundario { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+  #barra-acoes { display: flex; justify-content: center; gap: 12px; margin-top: 16px; }
+  .alerta { border-color: var(--destaque); border-left-width: 4px; }
+  .centro { text-align: center; }
+
+  /* tela final */
+  .vencedor { text-align: center; }
+  .trofeu { font-size: 3rem; line-height: 1; }
+  .vencedor-titulo { margin: 8px 0 0; color: var(--muted); font-weight: 600; }
+  .vencedor-nomes { margin: 4px 0 0; font-size: 1.5rem; font-weight: 700; }
+  tr.ganhou td { color: var(--destaque); font-weight: 700; }
+
+  /* aviso */
+  #aviso {
+    position: fixed; left: 16px; right: 16px; bottom: 16px; max-width: 528px; margin: 0 auto;
+    background: var(--text); color: var(--bg); padding: 12px 16px; border-radius: 10px;
+    white-space: pre-line; box-shadow: 0 4px 16px rgba(0,0,0,.3);
+    opacity: 0; transform: translateY(12px); transition: opacity .2s, transform .2s; pointer-events: none;
+  }
+  #aviso.visivel { opacity: 1; transform: none; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Premonição</h1>
+    <div class="eu"><span id="eu-nome"></span><span id="conexao" class="conexao" title="Conectado"></span></div>
+  </header>
+
+  <div id="aviso-partida" class="painel alerta escondido" role="status"></div>
+
+  <!-- entrar -->
+  <section id="tela-entrar" class="painel escondido">
+    <h2>Entrar na partida</h2>
+    <form id="form-entrar" class="linha">
+      <input id="nome" placeholder="Seu nome" maxlength="20" autocomplete="off">
+      <button type="submit">Entrar</button>
+    </form>
+    <p id="entrar-nota" class="nota"></p>
+  </section>
+
+  <!-- sala de espera -->
+  <section id="tela-sala" class="painel escondido">
+    <h2>Jogadores na sala</h2>
+    <ul id="sala-jogadores" class="lista"></ul>
+    <div id="sala-admin" class="escondido" style="margin-top:16px">
+      <label for="n-rodadas" class="nota">Número de rodadas</label>
+      <div class="linha" style="margin-top:4px">
+        <input id="n-rodadas" type="number" min="1" value="10">
+        <button id="btn-iniciar">Iniciar partida</button>
+      </div>
+    </div>
+    <p id="sala-nota" class="nota"></p>
+  </section>
+
+  <!-- jogo -->
+  <section id="tela-jogo" class="escondido">
+    <div class="painel status">
+      <span class="rodada" id="status-rodada"></span>
+      <span class="tag" id="status-fase"></span>
+      <span class="vez" id="status-vez"></span>
+    </div>
+
+    <div class="mesa">
+      <div class="mesa-topo">
+        <div id="trunfo"></div>
+        <div><strong>Trunfo</strong><br><small id="trunfo-nome"></small></div>
+      </div>
+      <div class="monte" id="monte"></div>
+      <div class="ultima" id="ultima-jogada"></div>
+    </div>
+
+    <div id="painel-palpite" class="painel escondido">
+      <h2>Seu palpite: quantas jogadas você vai ganhar?</h2>
+      <div class="opcoes" id="opcoes-palpite"></div>
+      <p class="nota" id="palpite-nota"></p>
+    </div>
+
+    <div class="painel">
+      <h2 id="mao-titulo">Sua mão</h2>
+      <div class="mao" id="mao"></div>
+    </div>
+
+    <div class="painel">
+      <h2>Placar da rodada</h2>
+      <table>
+        <thead><tr><th>Jogador</th><th class="num">Palpite</th><th class="num">Ganhou</th><th class="num">Pontos</th></tr></thead>
+        <tbody id="placar"></tbody>
+      </table>
+    </div>
+
+    <div id="painel-anterior" class="painel escondido">
+      <h2 id="anterior-titulo"></h2>
+      <table>
+        <thead><tr><th>Jogador</th><th class="num">Palpite</th><th class="num">Ganhou</th><th class="num"></th></tr></thead>
+        <tbody id="anterior"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- fim -->
+  <section id="tela-final" class="escondido">
+    <div class="painel vencedor">
+      <div class="trofeu" aria-hidden="true">🏆</div>
+      <p class="vencedor-titulo" id="vencedor-titulo"></p>
+      <p class="vencedor-nomes" id="vencedor-nomes"></p>
+    </div>
+    <div class="painel">
+      <h2>Pontuação final</h2>
+      <table>
+        <thead><tr><th>#</th><th>Jogador</th><th class="num">Pontos</th></tr></thead>
+        <tbody id="ranking"></tbody>
+      </table>
+    </div>
+    <div id="final-admin" class="painel escondido">
+      <button id="btn-nova" class="largo">Nova partida</button>
+      <p class="nota">Os jogadores continuam na sala e os pontos são zerados.</p>
+    </div>
+    <p id="final-nota" class="nota centro"></p>
+  </section>
+
+  <!-- ações no rodapé: encerrar (só admin) e sair -->
+  <div id="barra-acoes" class="escondido">
+    <button id="btn-encerrar" class="perigo">Encerrar partida</button>
+    <button id="btn-sair" class="secundario">Sair da partida</button>
+  </div>
+</main>
+
+<div id="aviso" role="status" aria-live="polite"></div>
+
+<script>
+const NAIPES = { copas: "♥", espadas: "♠", ouros: "♦", paus: "♣" };
+const VERMELHOS = ["copas", "ouros"];
+const INTERVALO_MS = 1000;
+
+const app = { eu: null, estado: null, mesa: null, mao: [], jogadores: [], ocupado: false };
+const $ = id => document.getElementById(id);
+
+// ---------- comunicação com o servidor ----------
+
+async function api(metodo, rota) {
+  const resp = await fetch(rota, { method: metodo, cache: "no-store" });
+  let corpo = null;
+  try { corpo = await resp.json(); } catch { /* resposta sem JSON */ }
+  return { ok: resp.ok, status: resp.status, corpo };
+}
+
+// executa uma ação do jogador e mostra a mensagem que o servidor devolveu
+async function acao(metodo, rota) {
+  if (app.ocupado) return;
+  app.ocupado = true;
+  try {
+    const r = await api(metodo, rota);
+    avisar(textoDaResposta(r));
+  } catch {
+    avisar("Sem conexão com o servidor");
+  } finally {
+    app.ocupado = false;
+    await atualizar();
+  }
+}
+
+function textoDaResposta(r) {
+  const c = r.corpo;
+  if (c?.mensagem) return c.mensagem;
+  if (typeof c?.detail === "string") return c.detail;
+  if (Array.isArray(c?.detail)) return "Valor inválido";   // erro de validação do FastAPI (422)
+  return r.ok ? "Feito" : `Erro ${r.status}`;
+}
+
+// busca tudo o que a tela precisa (polling)
+async function atualizar() {
+  try {
+    const [eu, estado, jogadores] = await Promise.all([
+      api("GET", "/eu"),
+      api("GET", "/partida/estado"),
+      api("GET", "/partida/jogadores/"),
+    ]);
+    app.eu = eu.ok ? eu.corpo : null;
+    app.estado = estado.corpo;
+    app.jogadores = jogadores.corpo ?? [];
+
+    if (app.estado.status !== "INICIO") {
+      const [mesa, mao] = await Promise.all([
+        api("GET", "/partida/mesa"),
+        app.eu ? api("GET", "/partida/rodada/mao") : Promise.resolve(null),
+      ]);
+      app.mesa = mesa.ok ? mesa.corpo : null;
+      app.mao = mao?.ok ? mao.corpo.cartas : [];
+    }
+    conexao(true);
+    desenhar();
+  } catch {
+    conexao(false);
+  }
+}
+
+async function ciclo() {
+  if (!app.ocupado) await atualizar();
+  setTimeout(ciclo, INTERVALO_MS);
+}
+
+// ---------- desenho da tela ----------
+
+function desenhar() {
+  const e = app.estado;
+  if (!e) return;
+
+  $("eu-nome").textContent = app.eu ? app.eu.nome + (app.eu.admin ? " · admin" : "") : "";
+
+  mostrar("tela-entrar", !app.eu && e.status !== "FINAL");
+  mostrar("tela-sala", e.status === "INICIO" && !!app.eu);
+  mostrar("tela-jogo", e.status === "RODADAS");
+  mostrar("tela-final", e.status === "FINAL");
+  mostrar("barra-acoes", !!app.eu);
+  mostrar("btn-encerrar", !!app.eu?.admin && e.status !== "FINAL");
+
+  // avisos do servidor, como "Fulano saiu e a rodada foi reiniciada"
+  mostrar("aviso-partida", !!e.aviso && e.status !== "INICIO");
+  $("aviso-partida").textContent = e.aviso ?? "";
+
+  $("entrar-nota").textContent = e.status === "INICIO"
+    ? e.mensagem
+    : "A partida já começou. Você está assistindo.";
+  $("form-entrar").classList.toggle("escondido", e.status !== "INICIO");
+
+  if (e.status === "INICIO") desenharSala();
+  if (e.status === "RODADAS" && app.mesa) desenharJogo();
+  if (e.status === "FINAL") desenharFinal();
+}
+
+function desenharSala() {
+  trocarHTML($("sala-jogadores"), app.jogadores.map(j =>
+    `<li><span>${esc(j.nome)}</span>${app.eu && j.id === app.eu.id ? '<span class="tag">você</span>' : ""}</li>`
+  ).join(""));
+
+  const admin = app.eu?.admin;
+  mostrar("sala-admin", admin);
+  const maximo = Math.max(1, Math.floor(51 / Math.max(1, app.jogadores.length)));
+  $("n-rodadas").max = maximo;
+  $("sala-nota").textContent = admin
+    ? `Com ${app.jogadores.length} jogador(es), o máximo é ${maximo} rodadas. É preciso pelo menos 2 jogadores.`
+    : "Aguardando o administrador iniciar a partida.";
+}
+
+function desenharJogo() {
+  const e = app.estado, m = app.mesa;
+  const minhaVez = !!app.eu && e.vez_de === app.eu.nome;
+
+  $("status-rodada").textContent = `Rodada ${e.rodada} de ${e.total_de_rodadas}`;
+  $("status-fase").textContent = e.fase === "PALPITES" ? "Palpites" : e.fase === "JOGADAS" ? "Jogadas" : e.fase;
+  const vez = $("status-vez");
+  vez.textContent = minhaVez ? "Sua vez!" : e.vez_de ? `Vez de ${e.vez_de}` : "";
+  vez.classList.toggle("minha", minhaVez);
+
+  // trunfo e mesa
+  trocarHTML($("trunfo"), m.trunfo ? htmlCarta(m.trunfo) : "");
+  $("trunfo-nome").textContent = m.trunfo ? m.trunfo.naipe : "";
+  trocarHTML($("monte"), m.jogada_atual.length
+    ? m.jogada_atual.map(x => `<figure>${htmlCarta(x.carta)}<figcaption>${esc(x.jogador)}</figcaption></figure>`).join("")
+    : `<span class="vazio">${e.fase === "PALPITES" ? "Aguardando os palpites" : "Nenhuma carta jogada ainda"}</span>`);
+  $("ultima-jogada").textContent = m.ultima_jogada
+    ? `Última jogada: ${m.ultima_jogada.vencedor} levou (${m.ultima_jogada.cartas.map(x => nomeCarta(x.carta)).join(", ")})`
+    : "";
+
+  // palpite
+  const palpitando = e.fase === "PALPITES" && minhaVez;
+  mostrar("painel-palpite", palpitando);
+  if (palpitando) desenharPalpite(e.rodada, m.placar_rodada);
+
+  // mão
+  const jogando = e.fase === "JOGADAS" && minhaVez;
+  $("mao-titulo").textContent = !app.eu ? "Você está assistindo" : jogando ? "Sua mão · toque numa carta para jogar" : "Sua mão";
+  $("mao").classList.toggle("jogavel", jogando);
+  trocarHTML($("mao"), app.mao.length
+    ? app.mao.map((c, i) => htmlCarta(c, { indice: i, habilitada: jogando })).join("")
+    : `<span class="nota">Sem cartas</span>`);
+
+  // placares
+  const pontos = Object.fromEntries(app.jogadores.map(j => [j.nome, j.pontos]));
+  trocarHTML($("placar"), m.placar_rodada.map(p => `
+    <tr class="${p.nome === e.vez_de ? "da-vez" : ""} ${app.eu && p.nome === app.eu.nome ? "sou-eu" : ""}">
+      <td class="nome">${esc(p.nome)}</td>
+      <td class="num">${p.palpite ?? "–"}</td>
+      <td class="num">${p.vitorias}</td>
+      <td class="num">${pontos[p.nome] ?? 0}</td>
+    </tr>`).join(""));
+
+  const ant = m.ultima_rodada;
+  mostrar("painel-anterior", !!ant);
+  if (ant) {
+    $("anterior-titulo").textContent = `Resultado da rodada ${ant.numero}`;
+    trocarHTML($("anterior"), ant.placar.map(p => {
+      const acertou = p.palpite === p.vitorias;
+      return `<tr><td>${esc(p.nome)}</td><td class="num">${p.palpite}</td><td class="num">${p.vitorias}</td>
+        <td class="num ${acertou ? "acertou" : "errou"}">${acertou ? `+${p.palpite + 1}` : "✗"}</td></tr>`;
+    }).join(""));
+  }
+}
+
+function desenharPalpite(nCartas, placar) {
+  // o último a palpitar não pode fazer a soma dar igual ao número de cartas
+  let proibido = null;
+  const faltam = placar.filter(p => p.palpite === null).length;
+  if (faltam === 1) {
+    const soma = placar.reduce((s, p) => s + (p.palpite ?? 0), 0);
+    proibido = nCartas - soma;
+  }
+  const opcoes = [];
+  for (let v = 0; v <= nCartas; v++) {
+    opcoes.push(`<button data-palpite="${v}" ${v === proibido ? "disabled" : ""}>${v}</button>`);
+  }
+  trocarHTML($("opcoes-palpite"), opcoes.join(""));
+  $("palpite-nota").textContent = proibido !== null && proibido >= 0 && proibido <= nCartas
+    ? `Você é o último: não pode palpitar ${proibido}, senão a soma daria ${nCartas}.`
+    : "";
+}
+
+function desenharFinal() {
+  const ordenados = [...app.jogadores].sort((a, b) => b.pontos - a.pontos);
+  const maximo = ordenados.length ? ordenados[0].pontos : 0;
+  const vencedores = ordenados.filter(j => j.pontos === maximo);
+
+  $("vencedor-titulo").textContent = vencedores.length > 1
+    ? `Empate com ${maximo} ponto(s)`
+    : `Vencedor com ${maximo} ponto(s)`;
+  $("vencedor-nomes").textContent = juntarNomes(vencedores.map(j => j.nome));
+
+  // empatados dividem a posição: 1º, 1º, 3º...
+  trocarHTML($("ranking"), ordenados.map(j => {
+    const posicao = ordenados.findIndex(o => o.pontos === j.pontos) + 1;
+    const classes = [j.pontos === maximo ? "ganhou" : "", app.eu && j.id === app.eu.id ? "sou-eu" : ""].join(" ");
+    return `<tr class="${classes}"><td>${posicao}º</td><td class="nome">${esc(j.nome)}</td><td class="num">${j.pontos}</td></tr>`;
+  }).join(""));
+
+  const admin = !!app.eu?.admin;
+  mostrar("final-admin", admin);
+  $("final-nota").textContent = admin ? "" : "Aguardando o administrador começar uma nova partida.";
+}
+
+function juntarNomes(nomes) {
+  if (nomes.length <= 1) return nomes.join("");
+  return nomes.slice(0, -1).join(", ") + " e " + nomes[nomes.length - 1];
+}
+
+// ---------- utilidades ----------
+
+function htmlCarta(c, { indice = null, habilitada = false } = {}) {
+  const cor = VERMELHOS.includes(c.naipe) ? " vermelha" : "";
+  const miolo = `<span class="valor">${esc(c.valor_char)}</span><span class="naipe">${NAIPES[c.naipe] ?? esc(c.naipe)}</span>`;
+  if (indice === null) return `<div class="carta${cor}" title="${esc(nomeCarta(c))}">${miolo}</div>`;
+  return `<button class="carta${cor}" data-indice="${indice}" ${habilitada ? "" : "disabled"}
+            aria-label="${esc(nomeCarta(c))}">${miolo}</button>`;
+}
+
+function nomeCarta(c) {
+  return `${c.valor_char} de ${c.naipe}`;
+}
+
+// só reescreve o HTML se mudou, para não "piscar" nem perder o toque em andamento
+function trocarHTML(el, html) {
+  if (el.dataset.html !== html) {
+    el.innerHTML = html;
+    el.dataset.html = html;
+  }
+}
+
+function mostrar(id, visivel) {
+  $(id).classList.toggle("escondido", !visivel);
+}
+
+// nomes vêm dos jogadores: escapar antes de colocar no HTML
+function esc(texto) {
+  return String(texto).replace(/[&<>"']/g, ch =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+}
+
+function conexao(ok) {
+  $("conexao").classList.toggle("off", !ok);
+  $("conexao").title = ok ? "Conectado" : "Sem conexão com o servidor";
+}
+
+let timerAviso;
+function avisar(texto) {
+  const el = $("aviso");
+  el.textContent = texto.trim();
+  el.classList.add("visivel");
+  clearTimeout(timerAviso);
+  timerAviso = setTimeout(() => el.classList.remove("visivel"), 4000);
+}
+
+// ---------- eventos ----------
+
+$("form-entrar").addEventListener("submit", ev => {
+  ev.preventDefault();
+  const nome = $("nome").value.trim() || "Jogador";
+  acao("POST", `/partida/entrar?nome=${encodeURIComponent(nome)}`);
+});
+
+$("btn-iniciar").addEventListener("click", () => {
+  acao("POST", `/partida/iniciar?n_rodadas=${encodeURIComponent($("n-rodadas").value)}`);
+});
+
+$("btn-encerrar").addEventListener("click", () => {
+  if (confirm("Encerrar a partida agora? A rodada em andamento não será pontuada.")) {
+    acao("POST", "/partida/encerrar");
+  }
+});
+
+$("btn-nova").addEventListener("click", () => acao("POST", "/partida/nova"));
+
+$("btn-sair").addEventListener("click", () => {
+  const emJogo = app.estado?.status === "RODADAS";
+  const pergunta = emJogo
+    ? "Sair da partida? A rodada em andamento será reiniciada para os outros jogadores."
+    : "Sair da partida?";
+  if (confirm(pergunta)) acao("POST", "/partida/sair");
+});
+
+$("opcoes-palpite").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-palpite]");
+  if (b && !b.disabled) acao("POST", `/partida/rodada/palpite?palpite=${b.dataset.palpite}`);
+});
+
+$("mao").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-indice]");
+  if (b && !b.disabled) acao("POST", `/partida/rodada/jogar?indice=${b.dataset.indice}`);
+});
+
+ciclo();
+</script>
+</body>
+</html>
