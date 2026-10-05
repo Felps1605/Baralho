@@ -1,24 +1,45 @@
-import secrets
+
 import uvicorn
 from fastapi import FastAPI, Response, Cookie, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pathlib import Path
+import time
+import asyncio
+from contextlib import asynccontextmanager
 
-from enum import Enum
+from classes import partida, rodada, jogada, turno, jogador, status_partida, status_rodada, LIMITE_TURNO, LIMITE_OFFLINE
 
 
-from classes import partida, rodada, jogada, turno, jogador, status_partida, status_rodada
 
 
-app = FastAPI()
+async def vigiar_inativos():
+    while True:
+        await asyncio.sleep(5)
+        try:
+            jogo.expulsar_inativos(LIMITE_TURNO, LIMITE_OFFLINE)
+        except Exception as e:
+            print("Erro ao expulsar inativos:", repr(e))
+
+@asynccontextmanager
+async def lifespan(app):
+    tarefa = asyncio.create_task(vigiar_inativos())
+    yield
+    tarefa.cancel()
+
+
+app = FastAPI(lifespan = lifespan)
 
 jogo = partida()
 
 
 def usuario_atual(sessao: str | None = Cookie(default = None)) -> jogador:
+    if sessao in jogo.removidos:
+        raise HTTPException(status_code = 401, detail = jogo.removidos[sessao]) # ex: "Você foi expulso por ana"
     if sessao is None or sessao not in jogo.sessoes:
         raise HTTPException(status_code = 401, detail = "Sem sessão válida")
-    return jogo.sessoes[sessao] #devolve o jogador que possui a chave sessao
+    j = jogo.sessoes[sessao]
+    j.ultimo_momento_online = time.monotonic()
+    return j 
 
 
 
@@ -71,6 +92,12 @@ def fazer_palpite(palpite: int, usuario: jogador = Depends(usuario_atual)):
 @app.post("/partida/rodada/jogar")
 def fazer_jogada(indice: int, usuario: jogador = Depends(usuario_atual)):
     return jogo.fazer_jogada(indice, usuario) 
+
+@app.post("/partida/rodada/presente")
+def presente(presente: bool = False, usuario: jogador = Depends(usuario_atual)):
+    if presente and jogo.jogador_da_vez() is usuario:
+        usuario.ultima_atividade_turno = time.monotonic()
+    return presente
     
 @app.get("/partida/mesa")
 def ver_mesa():
@@ -86,7 +113,15 @@ def nova_partida(usuario: jogador = Depends(usuario_atual)):
     
 @app.post("/partida/sair")
 def sair_da_partida(response: Response, sessao: str | None = Cookie(default = None)):
-    return jogo.sair_da_partida(response, sessao) 
+    return jogo.sair_da_partida(response, sessao)
+
+@app.post("/partida/expulsar")
+def expulsar_jogador(id: int, usuario: jogador = Depends(usuario_atual)):
+    return jogo.expulsar_jogador(usuario, id)
+
+@app.get("/partida/eventos")
+def ver_eventos(desde: int | None = None):
+    return jogo.eventos_desde(desde)
     
     
 

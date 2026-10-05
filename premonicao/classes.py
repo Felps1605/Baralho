@@ -1,8 +1,12 @@
 from baralho import deck, carta,  valores_padrao
 from enum import Enum
 import secrets
-
+import time
 from fastapi import  Response, HTTPException
+from contextlib import asynccontextmanager
+
+LIMITE_TURNO = 60 
+LIMITE_OFFLINE = 30
 
 
 class turno:
@@ -10,10 +14,13 @@ class turno:
     def __init__(self, ordem: list[jogador]):
         self.ordem = ordem
         self.posicao = 0
+        self.atual.ultima_atividade_turno = time.monotonic()
 
     @property
     def atual(self) -> jogador:
-        return self.ordem[self.posicao]
+        jogador_atual = self.ordem[self.posicao]
+        
+        return jogador_atual
 
     @property
     def eh_o_ultimo(self) -> bool:
@@ -22,6 +29,7 @@ class turno:
     def avancar(self):
         if self.posicao != len(self.ordem) - 1:
             self.posicao += 1
+            self.atual.ultima_atividade_turno = time.monotonic()
 
 def ordem_a_partir_de(mesa: list[jogador], inicio: int)-> list[jogador]:
     inicio %= len(mesa)
@@ -38,6 +46,9 @@ class jogador:
         self.admin: bool = False
         self.pontos: int = 0
         
+        self.ultima_atividade_turno: float | None = None
+        self.ultimo_momento_online = time.monotonic()
+
         self.mao = deck("Mão")
         self.mao.cartas = [] 
         
@@ -48,6 +59,7 @@ class jogada:
         self.turno_jogada: turno = turno_jogada
         self.monte: deck = deck() 
         self.vencedor: jogador | None = None
+        
 
 class status_rodada(Enum):
     PALPITES = 1
@@ -66,7 +78,7 @@ class rodada:
         self.carta_da_rodada = self.bolo.cartas.pop()
         self.jogada_atual: jogada | None = None
         self.jogadas: list[jogada] = []
-        self.palpites: dict[jogador, int] = {} # têm uma ordem especifica qu rotaciona a cada rodada
+        self.palpites: dict[jogador, int] = {} # têm uma ordem especifica que rotaciona a cada rodada
         self.vitorias: dict[jogador, int] = {}
         self.turno_palpites: turno = turno_palpites
         for j in self.turno_palpites.ordem:
@@ -90,6 +102,7 @@ class rodada:
             
         if usuario is not self.turno_palpites.atual:
             return {"mensagem": "Não é a sua vez de palpitar"} 
+
         
         if usuario in self.palpites:
                 return {"mensagem": "Você já fez seu palpite"} 
@@ -97,10 +110,10 @@ class rodada:
         if palpite > self.numero_de_cartas or palpite < 0:
             return {"mensagem": f"Valor de palpite inválido, precisa ser um numero inteiro entre 0 e {self.numero_de_cartas}"}
             
-        
         if not self.turno_palpites.eh_o_ultimo : 
             self.palpites[usuario] = palpite
             self.turno_palpites.avancar()
+
             return {"mensagem": "Palpite feito com sucesso"}
         
         #para o ultimo jogador
@@ -153,6 +166,29 @@ class partida:
 
         self.player_id = 1
         self.aviso: str | None = None
+        self.eventos: list[dict] = [] # avisos para todos
+        self.removidos: dict[str, str] = {} #tokens de quem foi removido e motivo
+    
+    def registrar_evento(self, tipo: str, texto: str, jogador_id: int | None = None):
+        # tipo: "entrou", "saiu", "expulso", "desconectado", "admin"
+        self.eventos.append({"id": len(self.eventos) + 1, "tipo": tipo, "texto": texto, "jogador_id": jogador_id})
+
+    def eventos_desde(self, desde: int | None):
+        ultimo = len(self.eventos) #indice do ultimo evento
+        if desde is None: #primeira requisição, não há eventos
+            return {"ultimo": ultimo, "eventos": []}
+        return {"ultimo": ultimo, "eventos": self.eventos[desde:]}
+
+    def jogador_da_vez(self) -> jogador | None:
+        r = self.rodada_atual
+        if self.status is not status_partida.RODADAS or r is None:
+            return None
+        if r.status is status_rodada.PALPITES:
+            return r.turno_palpites.atual
+        if r.status is status_rodada.JOGADAS and r.jogada_atual:
+            return r.jogada_atual.turno_jogada.atual
+        return None
+
 
     def nova_rodada(self, n_cartas: int):
 
@@ -198,8 +234,8 @@ class partida:
                     novo_jogador.admin = True
                 self.sessoes[token] = novo_jogador # criando uma correspondencia [token : jogador ]no dicionario sessoes 
                 response.set_cookie(key = "sessao", value = token, httponly = True) # configurando o cookie
-                print(f"{nome} entrou no self")
-                return {"mensagem": f"{nome} entrou no jogo"}
+                self.registrar_evento("entrou", f"{novo_jogador.nome} entrou na partida", novo_jogador.id)
+                return {"mensagem": f"{novo_jogador.nome} entrou no jogo"}
             return {"mensagem": "Jogo já está em andamento, não é possível entrar"}
 
     def status_completo(self):
@@ -207,7 +243,7 @@ class partida:
             return {"status": self.status.name, "mensagem": f"Partida ainda não começou, {len(self.sessoes)} jogador(es) na sala"}
         
         if self.status is status_partida.FINAL:
-            return {"status": self.status.name, "mensagem": "Partida encerrada"}
+            return {"status": self.status.name, "mensagem": "Partida encerrada", "aviso": self.aviso}
         
         rodada = self.rodada_atual
         numero_rodada = rodada.numero_de_cartas  # a rodada n é jogada com n cartas
@@ -218,19 +254,22 @@ class partida:
                       "vez_de": None,
                       "aviso": self.aviso
                       }
+        jogador_da_vez = self.jogador_da_vez()
         
         if rodada.status is status_rodada.PALPITES:
-            estado["vez_de"] = rodada.turno_palpites.atual.nome
-            estado["mensagem"] = f"Partida está na rodada {numero_rodada}, na fase de palpites, na vez de {rodada.turno_palpites.atual.nome}"
+            estado["vez_de"] = jogador_da_vez.nome
+            estado["mensagem"] = f"Partida está na rodada {numero_rodada}, na fase de palpites, na vez de {jogador_da_vez.nome}"
         elif rodada.status is status_rodada.JOGADAS:
             if rodada.jogada_atual is not None and rodada.jogada_atual.turno_jogada.atual is not None:
-                estado["vez_de"] = rodada.jogada_atual.turno_jogada.atual.nome
-                estado["mensagem"] = f"Partida está na rodada {numero_rodada}, na fase de jogadas, na vez de {rodada.jogada_atual.turno_jogada.atual.nome}"
+                estado["vez_de"] = jogador_da_vez.nome
+                estado["mensagem"] = f"Partida está na rodada {numero_rodada}, na fase de jogadas, na vez de {jogador_da_vez.nome}"
             else:
                 estado["mensagem"] = f"Partida está na rodada {numero_rodada}, na fase de jogadas"
         else:
             estado["mensagem"] = f"Rodada {numero_rodada} encerrada"
-        
+
+        if jogador_da_vez and jogador_da_vez.ultima_atividade_turno:
+            estado["segundos_restantes"] = max(0, int(LIMITE_TURNO - (time.monotonic() - jogador_da_vez.ultima_atividade_turno)))
         return estado
 
     def iniciar(self, n_rodadas, usuario):
@@ -251,6 +290,7 @@ class partida:
             return {"mensagem": f"Partida iniciada com {n_rodadas} rodadas"}
         return {"mensagem": "Partida já começou"} 
 
+    
     def fazer_jogada(self, indice: int, usuario: jogador):
     
         if self.status is not status_partida.RODADAS:
@@ -266,8 +306,6 @@ class partida:
         if usuario is not jogada.turno_jogada.atual:
             return {"mensagem": "Não é a sua vez de jogar"} 
     
-        
-        
         if  indice >= len(usuario.mao.cartas) or indice < 0:
             return {"mensagem": f"Índice de carta inválido, precisa ser um numero inteiro entre 0 e {len(usuario.mao.cartas) - 1}"}
         
@@ -315,6 +353,7 @@ class partida:
         resultados["pontuações"] = {j.nome: j.pontos for j in self.mesa} 
         return {"mensagem": mensagem, "resultados": resultados}
 
+    
     def ver_mesa(self):
         r = self.rodada_atual
         if r is None:
@@ -332,6 +371,7 @@ class partida:
             "placar_rodada": placar_da_rodada(r),
             "ultima_rodada": {"numero": ultima_rodada.numero_de_cartas, "placar": placar_da_rodada(ultima_rodada)} if ultima_rodada else None,
             }
+    
     def encerrar(self, usuario: jogador):
         if not usuario.admin:
             return {"mensagem": "Apenas o administrador pode encerrar a partida"}
@@ -339,6 +379,7 @@ class partida:
             return {"mensagem": "A partida já está encerrada"}
         self.status = status_partida.FINAL
         return {"mensagem": "Partida encerrada pelo administrador"}
+    
     
     def nova_partida(self, usuario):
         if not usuario.admin:
@@ -348,23 +389,31 @@ class partida:
         self.reiniciar()
         return {"mensagem": "Nova partida: aguardando jogadores"}
 
-    def sair_da_partida(self, response: Response , sessao: str):
-        if sessao is None or sessao not in self.sessoes:
-            raise HTTPException(status_code = 401, detail = "Sem sessão válida")
-        usuario = self.sessoes[sessao]
-        del self.sessoes[sessao]
-        response.delete_cookie("sessao")
+    
+
+    def remover_jogador(self, token: str, tipo: str, motivo: str, evento: str):
+        #motivo: oq o jogador removido ve
+        #evento: oq os outros jogadores veem
+
+        if token is None or token not in self.sessoes:
+                raise HTTPException(status_code = 401, detail = "Sem sessão válida")
+        usuario = self.sessoes[token]
+        
+        del self.sessoes[token]
+        self.removidos[token] = motivo
+        self.registrar_evento(tipo, texto = evento, jogador_id = usuario.id)
     
         #quando o ultimo jogador sai a partida volta ao estado inicial 
         if not self.sessoes:
             self.reiniciar()
         
-            return {"mensagem": "Você saiu da partida"}
+            return {"mensagem": motivo}
             
         #  quando o admin sai do self, o proximo menor id vira o novo admin
         if usuario.admin:
             novo_admin = min(self.sessoes.values(), key=lambda j: j.id)
             novo_admin.admin = True
+            self.registrar_evento(tipo = "admin", texto = f"{novo_admin.nome} agora é o administrador", jogador_id = novo_admin.id)
     
         if usuario in self.mesa:
             self.mesa.remove(usuario)
@@ -374,13 +423,49 @@ class partida:
                 if (len(self.mesa) < 2):
                     
                     self.status = status_partida.FINAL
-                    self.aviso = f"{usuario.nome} saiu da partida e não há jogadores o suficiente para continuar. Fim da partida"
+                    self.aviso = f"{evento} e não há jogadores o suficiente para continuar. Fim da partida"
                 
                 else:
                     
                     self.reiniciar_rodada(self.rodada_atual.numero_de_cartas)
-                    self.aviso = f"{usuario.nome} saiu da partida. A rodada {self.rodada_atual.numero_de_cartas} vai ser reiniciada"
+                    self.aviso = f"{evento}. A rodada {self.rodada_atual.numero_de_cartas} vai ser reiniciada"
     
             
-        return {"mensagem": "Você saiu da partida"}
+        return {"mensagem": motivo} 
+    
+    
+    def sair_da_partida(self, response: Response , sessao: str):
+        nome = self.sessoes[sessao].nome if sessao in self.sessoes else ""
+        resultado = self.remover_jogador(sessao, tipo = "saiu", motivo = "Você saiu da partida", evento = f"{nome} saiu da partida")
+        self.removidos.pop(sessao, None)
+        response.delete_cookie("sessao")
+        return resultado
+
+      
+    def expulsar_jogador(self, administrador: jogador, id_alvo: int):
         
+        if administrador.admin is not True:
+            return {"mensagem": "Jogador não tem autorização para expulsar outros jogadores"}
+        if administrador.id == id_alvo:
+            return {"mensagem": "Você não pode expulsar a si mesmo, use Sair da partida"}
+        token = next((t for t, j in self.sessoes.items() if j.id == id_alvo), None)
+        if token is None:
+            return {"mensagem": "Jogador não encontrado"}
+        alvo = self.sessoes[token]
+                    
+        self.remover_jogador(token, tipo = "expulso", motivo = f"Você foi expulso por {administrador.nome}", evento = f"{alvo.nome} foi expulso por {administrador.nome}")
+        return {"mensagem": f"{alvo.nome} foi expulso"}
+
+    def expulsar_inativos(self, LIMITE_TURNO, LIMITE_OFFLINE ):
+        agora = time.monotonic()
+        a_remover: list[tuple] = []
+        for token, j in self.sessoes.items():
+            
+            if agora - j.ultimo_momento_online > LIMITE_OFFLINE:
+                a_remover.append((token, f"Você foi expulso por tempo demais fora da página", f"{j.nome} foi desconectado por ficar tempo demais fora da página"))
+            
+            elif j is self.jogador_da_vez() and j.ultima_atividade_turno and agora - j.ultima_atividade_turno > LIMITE_TURNO:
+                a_remover.append((token, f"Você foi expulso por inatividade", f"{j.nome} foi desconectado por inatividade durante o turno"))
+            
+        for token, motivo, evento in a_remover:
+            self.remover_jogador(token, "desconectado", motivo, evento)

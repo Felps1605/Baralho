@@ -143,14 +143,42 @@
   .vencedor-nomes { margin: 4px 0 0; font-size: 1.5rem; font-weight: 700; }
   tr.ganhou td { color: var(--destaque); font-weight: 700; }
 
-  /* aviso */
-  #aviso {
-    position: fixed; left: 16px; right: 16px; bottom: 16px; max-width: 528px; margin: 0 auto;
-    background: var(--text); color: var(--bg); padding: 12px 16px; border-radius: 10px;
-    white-space: pre-line; box-shadow: 0 4px 16px rgba(0,0,0,.3);
-    opacity: 0; transform: translateY(12px); transition: opacity .2s, transform .2s; pointer-events: none;
+  /* expulsar */
+  button.expulsar {
+    font-size: .75rem; padding: 2px 8px; border-radius: 99px; font-weight: 600;
+    background: transparent; color: var(--erro); border: 1px solid var(--erro);
   }
-  #aviso.visivel { opacity: 1; transform: none; }
+  .lista li .acoes { display: flex; align-items: center; gap: 8px; }
+  .motivo { color: var(--erro); font-weight: 600; }
+
+  /* confirmação de presença (aparece quando o tempo do turno está acabando) */
+  #presenca {
+    position: fixed; inset: 0; z-index: 20; padding: 16px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.55);
+  }
+  #presenca .caixa {
+    background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--destaque);
+    border-radius: 12px; padding: 24px; width: 100%; max-width: 360px; text-align: center;
+  }
+  #presenca h2 { color: var(--text); font-size: 1.2rem; margin-bottom: 4px; }
+  #presenca p { margin: 0; color: var(--muted); }
+  .contagem { font-size: 3.5rem; font-weight: 700; line-height: 1; margin: 16px 0; color: var(--destaque); }
+
+  /* pop-ups (empilhados no rodapé) */
+  #avisos {
+    position: fixed; left: 16px; right: 16px; bottom: 16px; max-width: 528px; margin: 0 auto;
+    display: flex; flex-direction: column; gap: 8px; pointer-events: none; z-index: 10;
+  }
+  .toast {
+    background: var(--text); color: var(--bg); padding: 12px 16px; border-radius: 10px;
+    white-space: pre-line; box-shadow: 0 4px 16px rgba(0,0,0,.3); border-left: 6px solid transparent;
+    opacity: 0; transform: translateY(12px); transition: opacity .2s, transform .2s;
+  }
+  .toast.visivel { opacity: 1; transform: none; }
+  .toast.alerta { border-left-color: var(--destaque); }
+  .toast.erro { border-left-color: var(--erro); }
+  .toast.ok { border-left-color: var(--ok); }
 </style>
 </head>
 <body>
@@ -169,6 +197,7 @@
       <input id="nome" placeholder="Seu nome" maxlength="20" autocomplete="off">
       <button type="submit">Entrar</button>
     </form>
+    <p id="entrar-motivo" class="nota motivo escondido"></p>
     <p id="entrar-nota" class="nota"></p>
   </section>
 
@@ -217,7 +246,7 @@
     <div class="painel">
       <h2>Placar da rodada</h2>
       <table>
-        <thead><tr><th>Jogador</th><th class="num">Palpite</th><th class="num">Ganhou</th><th class="num">Pontos</th></tr></thead>
+        <thead><tr><th>Jogador</th><th class="num">Palpite</th><th class="num">Ganhou</th><th class="num">Pontos</th><th class="num" id="placar-acao"></th></tr></thead>
         <tbody id="placar"></tbody>
       </table>
     </div>
@@ -259,14 +288,30 @@
   </div>
 </main>
 
-<div id="aviso" role="status" aria-live="polite"></div>
+<!-- "você ainda está aí?" -->
+<div id="presenca" class="escondido" role="alertdialog" aria-labelledby="presenca-titulo" aria-describedby="presenca-texto">
+  <div class="caixa">
+    <h2 id="presenca-titulo">Você ainda está aí?</h2>
+    <p id="presenca-texto">Sua vez está acabando. Se não jogar, você será desconectado por inatividade.</p>
+    <div class="contagem" id="presenca-segundos">10</div>
+    <button id="btn-presente" class="largo">Estou aqui!</button>
+  </div>
+</div>
+
+<div id="avisos" role="status" aria-live="polite"></div>
 
 <script>
 const NAIPES = { copas: "♥", espadas: "♠", ouros: "♦", paus: "♣" };
 const VERMELHOS = ["copas", "ouros"];
 const INTERVALO_MS = 1000;
+const AVISO_INATIVIDADE_S = 10;   // mostra "você ainda está aí?" quando faltam tantos segundos no turno
+const TITULO_PAGINA = document.title;
 
-const app = { eu: null, estado: null, mesa: null, mao: [], jogadores: [], ocupado: false };
+const app = {
+  eu: null, estado: null, mesa: null, mao: [], jogadores: [], ocupado: false,
+  ultimoEvento: null,   // id do último evento já mostrado (null = ainda não consultou)
+  motivoSaida: null,    // "Você foi expulso por ..." quando o servidor tira o jogador
+};
 const $ = id => document.getElementById(id);
 
 // ---------- comunicação com o servidor ----------
@@ -304,14 +349,27 @@ function textoDaResposta(r) {
 // busca tudo o que a tela precisa (polling)
 async function atualizar() {
   try {
-    const [eu, estado, jogadores] = await Promise.all([
+    const desde = app.ultimoEvento === null ? "" : `?desde=${app.ultimoEvento}`;
+    const [eu, estado, jogadores, eventos] = await Promise.all([
       api("GET", "/eu"),
       api("GET", "/partida/estado"),
       api("GET", "/partida/jogadores/"),
+      api("GET", "/partida/eventos" + desde),
     ]);
+    const euAntes = app.eu;
     app.eu = eu.ok ? eu.corpo : null;
     app.estado = estado.corpo;
     app.jogadores = jogadores.corpo ?? [];
+
+    // o servidor me tirou da partida (expulso ou desconectado): o 401 traz o motivo
+    if (!app.eu && eu.status === 401 && eu.corpo?.detail !== "Sem sessão válida") {
+      if (euAntes) avisar(eu.corpo.detail, "erro");   // pop-up só na hora em que acontece
+      app.motivoSaida = eu.corpo.detail;
+    } else {
+      app.motivoSaida = null;
+    }
+
+    if (eventos.ok) mostrarEventos(eventos.corpo, euAntes ?? app.eu);
 
     if (app.estado.status !== "INICIO") {
       const [mesa, mao] = await Promise.all([
@@ -352,20 +410,24 @@ function desenhar() {
   mostrar("aviso-partida", !!e.aviso && e.status !== "INICIO");
   $("aviso-partida").textContent = e.aviso ?? "";
 
+  mostrar("entrar-motivo", !!app.motivoSaida);
+  $("entrar-motivo").textContent = app.motivoSaida ?? "";
   $("entrar-nota").textContent = e.status === "INICIO"
     ? e.mensagem
     : "A partida já começou. Você está assistindo.";
   $("form-entrar").classList.toggle("escondido", e.status !== "INICIO");
 
+  if (e.status !== "RODADAS") desenharPresenca(false);
   if (e.status === "INICIO") desenharSala();
   if (e.status === "RODADAS" && app.mesa) desenharJogo();
   if (e.status === "FINAL") desenharFinal();
 }
 
 function desenharSala() {
-  trocarHTML($("sala-jogadores"), app.jogadores.map(j =>
-    `<li><span>${esc(j.nome)}</span>${app.eu && j.id === app.eu.id ? '<span class="tag">você</span>' : ""}</li>`
-  ).join(""));
+  trocarHTML($("sala-jogadores"), app.jogadores.map(j => {
+    const souEu = app.eu && j.id === app.eu.id;
+    return `<li><span>${esc(j.nome)}</span><span class="acoes">${souEu ? '<span class="tag">você</span>' : botaoExpulsar(j)}</span></li>`;
+  }).join(""));
 
   const admin = app.eu?.admin;
   mostrar("sala-admin", admin);
@@ -385,6 +447,10 @@ function desenharJogo() {
   const vez = $("status-vez");
   vez.textContent = minhaVez ? "Sua vez!" : e.vez_de ? `Vez de ${e.vez_de}` : "";
   vez.classList.toggle("minha", minhaVez);
+
+  // o servidor manda segundos_restantes só para quem está na vez
+  const restante = e.segundos_restantes;
+  desenharPresenca(minhaVez && typeof restante === "number" && restante <= AVISO_INATIVIDADE_S, restante);
 
   // trunfo e mesa
   trocarHTML($("trunfo"), m.trunfo ? htmlCarta(m.trunfo) : "");
@@ -409,14 +475,17 @@ function desenharJogo() {
     ? app.mao.map((c, i) => htmlCarta(c, { indice: i, habilitada: jogando })).join("")
     : `<span class="nota">Sem cartas</span>`);
 
-  // placares
-  const pontos = Object.fromEntries(app.jogadores.map(j => [j.nome, j.pontos]));
+  // placares (o nome é único na sala, então dá pra achar o jogador pelo nome)
+  const porNome = Object.fromEntries(app.jogadores.map(j => [j.nome, j]));
+  const admin = !!app.eu?.admin;
+  mostrar("placar-acao", admin);
   trocarHTML($("placar"), m.placar_rodada.map(p => `
     <tr class="${p.nome === e.vez_de ? "da-vez" : ""} ${app.eu && p.nome === app.eu.nome ? "sou-eu" : ""}">
       <td class="nome">${esc(p.nome)}</td>
       <td class="num">${p.palpite ?? "–"}</td>
       <td class="num">${p.vitorias}</td>
-      <td class="num">${pontos[p.nome] ?? 0}</td>
+      <td class="num">${porNome[p.nome]?.pontos ?? 0}</td>
+      ${admin ? `<td class="num">${porNome[p.nome] && p.nome !== app.eu.nome ? botaoExpulsar(porNome[p.nome]) : ""}</td>` : ""}
     </tr>`).join(""));
 
   const ant = m.ultima_rodada;
@@ -429,6 +498,23 @@ function desenharJogo() {
         <td class="num ${acertou ? "acertou" : "errou"}">${acertou ? `+${p.palpite + 1}` : "✗"}</td></tr>`;
     }).join(""));
   }
+}
+
+// pop-up "você ainda está aí?": aparece nos últimos segundos do meu turno
+function desenharPresenca(visivel, segundos = 0) {
+  const caixa = $("presenca");
+  const estavaEscondido = caixa.classList.contains("escondido");
+  mostrar("presenca", visivel);
+  document.title = visivel ? `⏰ ${segundos}s — Premonição` : TITULO_PAGINA;   // chama atenção com a aba em segundo plano
+  if (!visivel) return;
+  $("presenca-segundos").textContent = segundos;
+  if (estavaEscondido) $("btn-presente").focus();
+}
+
+async function confirmarPresenca() {
+  mostrar("presenca", false);
+  try { await api("POST", "/partida/rodada/presente?presente=true"); } catch { /* o próximo ciclo mostra o erro de conexão */ }
+  atualizar();
 }
 
 function desenharPalpite(nCartas, placar) {
@@ -476,6 +562,38 @@ function juntarNomes(nomes) {
   return nomes.slice(0, -1).join(", ") + " e " + nomes[nomes.length - 1];
 }
 
+// ---------- expulsar e eventos ----------
+
+function botaoExpulsar(j) {
+  if (!app.eu?.admin) return "";
+  return `<button class="expulsar" data-expulsar="${j.id}" data-nome="${esc(j.nome)}">Expulsar</button>`;
+}
+
+function pedirExpulsao(ev) {
+  const b = ev.target.closest("button[data-expulsar]");
+  if (!b) return;
+  const emJogo = app.estado?.status === "RODADAS";
+  const pergunta = `Expulsar ${b.dataset.nome}?` + (emJogo ? " A rodada em andamento será reiniciada." : "");
+  if (confirm(pergunta)) acao("POST", `/partida/expulsar?id=${b.dataset.expulsar}`);
+}
+
+// cor do pop-up para cada tipo de evento do servidor
+const COR_EVENTO = { entrou: "ok", saiu: "alerta", expulso: "erro", desconectado: "alerta", admin: "alerta" };
+
+function mostrarEventos({ ultimo, eventos }, eu) {
+  if (app.ultimoEvento !== null) {
+    for (const ev of eventos) {
+      if (ev.id <= app.ultimoEvento) continue;   // já mostrado por outra consulta
+      const sobreMim = !!eu && ev.jogador_id === eu.id;
+      if (ev.tipo === "expulso" && eu?.admin) continue;   // quem expulsou já viu a resposta da ação
+      if (ev.tipo === "admin" && sobreMim) avisar("Agora você é o administrador da partida", "ok");
+      else if (!sobreMim) avisar(ev.texto, COR_EVENTO[ev.tipo]);
+      // os eventos sobre mim (entrei, saí, fui expulso) já aparecem pela resposta da ação ou pelo 401
+    }
+  }
+  app.ultimoEvento = Math.max(app.ultimoEvento ?? 0, ultimo);
+}
+
 // ---------- utilidades ----------
 
 function htmlCarta(c, { indice = null, habilitada = false } = {}) {
@@ -513,14 +631,30 @@ function conexao(ok) {
   $("conexao").title = ok ? "Conectado" : "Sem conexão com o servidor";
 }
 
-let timerAviso;
-function avisar(texto) {
-  const el = $("aviso");
+// pop-ups empilhados: cada um some sozinho depois de alguns segundos
+const MAX_AVISOS = 4;
+const filaAvisos = [];   // avisos que chegaram com a página escondida
+
+function avisar(texto, tipo = "") {
+  // aba em segundo plano / janela minimizada ou coberta: guarda pra mostrar quando o jogador voltar
+  if (document.hidden) { filaAvisos.push([texto, tipo]); return; }
+  const pilha = $("avisos");
+  const el = document.createElement("div");
+  el.className = "toast " + tipo;
   el.textContent = texto.trim();
+  pilha.appendChild(el);
+  while (pilha.children.length > MAX_AVISOS) pilha.firstElementChild.remove();
+  el.offsetHeight;   // força o navegador a desenhar o estado inicial, pra transição funcionar
   el.classList.add("visivel");
-  clearTimeout(timerAviso);
-  timerAviso = setTimeout(() => el.classList.remove("visivel"), 4000);
+  setTimeout(() => {
+    el.classList.remove("visivel");
+    setTimeout(() => el.remove(), 250);
+  }, tipo === "erro" ? 7000 : 4500);
 }
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) filaAvisos.splice(0).forEach(([texto, tipo]) => avisar(texto, tipo));
+});
 
 // ---------- eventos ----------
 
@@ -542,6 +676,8 @@ $("btn-encerrar").addEventListener("click", () => {
 
 $("btn-nova").addEventListener("click", () => acao("POST", "/partida/nova"));
 
+$("btn-presente").addEventListener("click", confirmarPresenca);
+
 $("btn-sair").addEventListener("click", () => {
   const emJogo = app.estado?.status === "RODADAS";
   const pergunta = emJogo
@@ -549,6 +685,9 @@ $("btn-sair").addEventListener("click", () => {
     : "Sair da partida?";
   if (confirm(pergunta)) acao("POST", "/partida/sair");
 });
+
+$("sala-jogadores").addEventListener("click", pedirExpulsao);
+$("placar").addEventListener("click", pedirExpulsao);
 
 $("opcoes-palpite").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-palpite]");
