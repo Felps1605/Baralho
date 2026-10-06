@@ -4,9 +4,15 @@ import secrets
 import time
 from fastapi import  Response, HTTPException
 from contextlib import asynccontextmanager
+from __future__ import annotations
+import os
 
 LIMITE_TURNO = 60 
 LIMITE_OFFLINE = 30
+
+EM_PRODUCAO = os.environ.get("PRODUCAO") == "1"
+
+
 
 
 class turno:
@@ -168,10 +174,13 @@ class partida:
         self.aviso: str | None = None
         self.eventos: list[dict] = [] # avisos para todos
         self.removidos: dict[str, str] = {} #tokens de quem foi removido e motivo
+
+        self.ultima_atividade: float = time.monotonic() 
     
     def registrar_evento(self, tipo: str, texto: str, jogador_id: int | None = None):
         # tipo: "entrou", "saiu", "expulso", "desconectado", "admin"
         self.eventos.append({"id": len(self.eventos) + 1, "tipo": tipo, "texto": texto, "jogador_id": jogador_id})
+        
 
     def eventos_desde(self, desde: int | None):
         ultimo = len(self.eventos) #indice do ultimo evento
@@ -218,13 +227,19 @@ class partida:
     def entrar(self, nome: str, response: Response, sessao: str | None ):
         
             if sessao is not None and sessao in self.sessoes:
-                    print("Jogador ja está no self")
-                    return {"mensagem" : "Jogador ja está no self"}
-        
+                    print("Jogador ja está na partida")
+                    return {"mensagem" : "Jogador ja está na partida"}
+            
+            if len(self.sessoes) >= 10:
+                raise HTTPException(409, "Sala cheia")
+
             nome_final = f"Jogador {self.player_id}" if nome == "Jogador" else nome
             if nome_final in [j.nome for j in self.sessoes.values()]:
                 return {"mensagem" : "Nome ja está em uso, escolha outro"}
             
+            if len(nome_final) > 20:
+                return {"mensagem" : "Nome excede o limite de 20 caracteres"}
+
             if self.status is status_partida.INICIO:
                 token = secrets.token_urlsafe(16) # gerando um token aleatorio
                 novo_jogador = jogador(self.player_id, nome)
@@ -232,10 +247,20 @@ class partida:
                 
                 if not any(j.admin for j in self.sessoes.values()):
                     novo_jogador.admin = True
+                
                 self.sessoes[token] = novo_jogador # criando uma correspondencia [token : jogador ]no dicionario sessoes 
-                response.set_cookie(key = "sessao", value = token, httponly = True) # configurando o cookie
+                
+                response.set_cookie(key = "sessao",
+                                    value = token,
+                                    httponly = True,
+                                    samesite = "lax",
+                                    secure = EM_PRODUCAO,
+                                    ) # configurando o cookie
+                
                 self.registrar_evento("entrou", f"{novo_jogador.nome} entrou na partida", novo_jogador.id)
+                
                 return {"mensagem": f"{novo_jogador.nome} entrou no jogo"}
+            
             return {"mensagem": "Jogo já está em andamento, não é possível entrar"}
 
     def status_completo(self):
@@ -270,6 +295,8 @@ class partida:
 
         if jogador_da_vez and jogador_da_vez.ultima_atividade_turno:
             estado["segundos_restantes"] = max(0, int(LIMITE_TURNO - (time.monotonic() - jogador_da_vez.ultima_atividade_turno)))
+
+        self.ultima_atividade = time.monotonic()
         return estado
 
     def iniciar(self, n_rodadas, usuario):

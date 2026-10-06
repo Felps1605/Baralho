@@ -151,6 +151,12 @@
   .lista li .acoes { display: flex; align-items: center; gap: 8px; }
   .motivo { color: var(--erro); font-weight: 600; }
 
+  /* tela inicial: criar sala / entrar com código */
+  .inicio-bloco + .inicio-bloco { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line); }
+  .inicio-bloco label { display: block; margin-bottom: 4px; }
+  #inicio-codigo { text-transform: uppercase; letter-spacing: .2em; font-weight: 700; text-align: center; }
+  .codigo-grande { font-size: 2rem; font-weight: 700; letter-spacing: .2em; margin: 4px 0 12px; }
+
   /* confirmação de presença (aparece quando o tempo do turno está acabando) */
   #presenca {
     position: fixed; inset: 0; z-index: 20; padding: 16px;
@@ -185,10 +191,30 @@
 <main>
   <header>
     <h1>Premonição</h1>
-    <div class="eu"><span id="eu-nome"></span><span id="conexao" class="conexao" title="Conectado"></span></div>
+    <div class="eu"><span id="sala-codigo" class="tag escondido" title="Código da sala"></span><span id="eu-nome"></span><span id="conexao" class="conexao" title="Conectado"></span></div>
   </header>
 
   <div id="aviso-partida" class="painel alerta escondido" role="status"></div>
+
+  <!-- tela inicial: criar sala ou entrar com código -->
+  <section id="tela-inicio" class="painel escondido">
+    <div class="inicio-bloco">
+      <label for="inicio-nome" class="nota">Seu nome</label>
+      <input id="inicio-nome" placeholder="Como quer ser chamado" maxlength="20" autocomplete="off">
+    </div>
+    <div class="inicio-bloco">
+      <h2>Criar uma sala nova</h2>
+      <button id="btn-criar" class="largo">Criar sala</button>
+    </div>
+    <div class="inicio-bloco">
+      <h2>Entrar numa sala existente</h2>
+      <form id="form-codigo" class="linha">
+        <input id="inicio-codigo" placeholder="CÓDIGO" maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <button type="submit">Entrar</button>
+      </form>
+    </div>
+    <p id="inicio-erro" class="nota motivo escondido"></p>
+  </section>
 
   <!-- entrar -->
   <section id="tela-entrar" class="painel escondido">
@@ -199,10 +225,14 @@
     </form>
     <p id="entrar-motivo" class="nota motivo escondido"></p>
     <p id="entrar-nota" class="nota"></p>
+    <button id="btn-outra-sala" class="secundario largo" style="margin-top:12px">Entrar em outra sala</button>
   </section>
 
   <!-- sala de espera -->
   <section id="tela-sala" class="painel escondido">
+    <p class="nota" style="margin:0">Código da sala</p>
+    <div class="codigo-grande" id="sala-codigo-grande"></div>
+    <button id="btn-copiar" class="secundario largo" style="margin-bottom:16px">Copiar link para convidar</button>
     <h2>Jogadores na sala</h2>
     <ul id="sala-jogadores" class="lista"></ul>
     <div id="sala-admin" class="escondido" style="margin-top:16px">
@@ -308,6 +338,7 @@ const AVISO_INATIVIDADE_S = 10;   // mostra "você ainda está aí?" quando falt
 const TITULO_PAGINA = document.title;
 
 const app = {
+  codigo: lerCodigoDaUrl(),   // código da sala em que estou (vem de ?sala=ABC12); "" = na tela inicial
   eu: null, estado: null, mesa: null, mao: [], jogadores: [], ocupado: false,
   ultimoEvento: null,   // id do último evento já mostrado (null = ainda não consultou)
   motivoSaida: null,    // "Você foi expulso por ..." quando o servidor tira o jogador
@@ -346,16 +377,57 @@ function textoDaResposta(r) {
   return r.ok ? "Feito" : `Erro ${r.status}`;
 }
 
+// ---------- salas ----------
+
+function lerCodigoDaUrl() {
+  return (new URLSearchParams(location.search).get("sala") || "").trim().toUpperCase();
+}
+
+// caminho de uma rota da sala atual: sala("/estado") -> "/sala/AB3K9/estado"
+function sala(caminho) {
+  return `/sala/${encodeURIComponent(app.codigo)}${caminho}`;
+}
+
+// muda de sala ("" volta para a tela inicial) e zera tudo o que era da sala anterior
+function definirSala(codigo) {
+  app.codigo = codigo;
+  app.eu = null; app.estado = null; app.mesa = null; app.mao = []; app.jogadores = [];
+  app.ultimoEvento = null; app.motivoSaida = null;
+  const url = new URL(location.href);
+  if (codigo) url.searchParams.set("sala", codigo); else url.searchParams.delete("sala");
+  history.replaceState(null, "", url);
+}
+
+function erroInicio(texto) {
+  mostrar("inicio-erro", !!texto);
+  $("inicio-erro").textContent = texto ?? "";
+}
+
+function sairDaSala(motivo) {
+  definirSala("");
+  erroInicio(motivo);
+  desenhar();
+}
+
+function nomeDigitado() {
+  return $("inicio-nome").value.trim() || "Jogador";
+}
+
 // busca tudo o que a tela precisa (polling)
 async function atualizar() {
+  if (!app.codigo) { desenhar(); return; }
   try {
     const desde = app.ultimoEvento === null ? "" : `?desde=${app.ultimoEvento}`;
     const [eu, estado, jogadores, eventos] = await Promise.all([
-      api("GET", "/eu"),
-      api("GET", "/partida/estado"),
-      api("GET", "/partida/jogadores/"),
-      api("GET", "/partida/eventos" + desde),
+      api("GET", sala("/eu")),
+      api("GET", sala("/estado")),
+      api("GET", sala("/jogadores/")),
+      api("GET", sala("/eventos") + desde),
     ]);
+    if (estado.status === 404) {   // a sala não existe (código errado ou apagada por inatividade)
+      sairDaSala("Sala não encontrada. Confira o código ou crie uma nova.");
+      return;
+    }
     const euAntes = app.eu;
     app.eu = eu.ok ? eu.corpo : null;
     app.estado = estado.corpo;
@@ -373,8 +445,8 @@ async function atualizar() {
 
     if (app.estado.status !== "INICIO") {
       const [mesa, mao] = await Promise.all([
-        api("GET", "/partida/mesa"),
-        app.eu ? api("GET", "/partida/rodada/mao") : Promise.resolve(null),
+        api("GET", sala("/mesa")),
+        app.eu ? api("GET", sala("/rodada/mao")) : Promise.resolve(null),
       ]);
       app.mesa = mesa.ok ? mesa.corpo : null;
       app.mao = mao?.ok ? mao.corpo.cartas : [];
@@ -394,10 +466,22 @@ async function ciclo() {
 // ---------- desenho da tela ----------
 
 function desenhar() {
+  // sem sala: só a tela inicial
+  mostrar("tela-inicio", !app.codigo);
+  mostrar("sala-codigo", !!app.codigo);
+  $("sala-codigo").textContent = app.codigo ? `Sala ${app.codigo}` : "";
+  if (!app.codigo) {
+    for (const id of ["tela-entrar", "tela-sala", "tela-jogo", "tela-final", "barra-acoes", "aviso-partida"]) mostrar(id, false);
+    desenharPresenca(false);
+    $("eu-nome").textContent = "";
+    return;
+  }
+
   const e = app.estado;
   if (!e) return;
 
   $("eu-nome").textContent = app.eu ? app.eu.nome + (app.eu.admin ? " · admin" : "") : "";
+  $("sala-codigo-grande").textContent = app.codigo;
 
   mostrar("tela-entrar", !app.eu && e.status !== "FINAL");
   mostrar("tela-sala", e.status === "INICIO" && !!app.eu);
@@ -513,7 +597,7 @@ function desenharPresenca(visivel, segundos = 0) {
 
 async function confirmarPresenca() {
   mostrar("presenca", false);
-  try { await api("POST", "/partida/rodada/presente?presente=true"); } catch { /* o próximo ciclo mostra o erro de conexão */ }
+  try { await api("POST", sala("/rodada/presente?presente=true")); } catch { /* o próximo ciclo mostra o erro de conexão */ }
   atualizar();
 }
 
@@ -574,7 +658,7 @@ function pedirExpulsao(ev) {
   if (!b) return;
   const emJogo = app.estado?.status === "RODADAS";
   const pergunta = `Expulsar ${b.dataset.nome}?` + (emJogo ? " A rodada em andamento será reiniciada." : "");
-  if (confirm(pergunta)) acao("POST", `/partida/expulsar?id=${b.dataset.expulsar}`);
+  if (confirm(pergunta)) acao("POST", sala(`/expulsar?id=${b.dataset.expulsar}`));
 }
 
 // cor do pop-up para cada tipo de evento do servidor
@@ -661,20 +745,71 @@ document.addEventListener("visibilitychange", () => {
 $("form-entrar").addEventListener("submit", ev => {
   ev.preventDefault();
   const nome = $("nome").value.trim() || "Jogador";
-  acao("POST", `/partida/entrar?nome=${encodeURIComponent(nome)}`);
+  acao("POST", sala(`/entrar?nome=${encodeURIComponent(nome)}`));
 });
 
 $("btn-iniciar").addEventListener("click", () => {
-  acao("POST", `/partida/iniciar?n_rodadas=${encodeURIComponent($("n-rodadas").value)}`);
+  acao("POST", sala(`/iniciar?n_rodadas=${encodeURIComponent($("n-rodadas").value)}`));
 });
 
 $("btn-encerrar").addEventListener("click", () => {
   if (confirm("Encerrar a partida agora? A rodada em andamento não será pontuada.")) {
-    acao("POST", "/partida/encerrar");
+    acao("POST", sala("/encerrar"));
   }
 });
 
-$("btn-nova").addEventListener("click", () => acao("POST", "/partida/nova"));
+$("btn-nova").addEventListener("click", () => acao("POST", sala("/nova")));
+
+// criar uma sala nova: o servidor devolve o código e já coloca o criador como admin
+$("btn-criar").addEventListener("click", async () => {
+  if (app.ocupado) return;
+  app.ocupado = true;
+  erroInicio("");
+  try {
+    const r = await api("POST", `/sala?nome=${encodeURIComponent(nomeDigitado())}`);
+    if (r.ok && r.corpo?.codigo) definirSala(r.corpo.codigo);
+    else erroInicio(textoDaResposta(r));
+  } catch {
+    erroInicio("Sem conexão com o servidor");
+  } finally {
+    app.ocupado = false;
+    await atualizar();
+  }
+});
+
+// entrar numa sala existente digitando o código
+$("form-codigo").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  if (app.ocupado) return;
+  const codigo = $("inicio-codigo").value.trim().toUpperCase();
+  if (!codigo) { erroInicio("Digite o código da sala"); return; }
+  app.ocupado = true;
+  erroInicio("");
+  try {
+    const existe = await api("GET", `/sala/${encodeURIComponent(codigo)}/estado`);
+    if (existe.status === 404) { erroInicio("Sala não encontrada. Confira o código."); return; }
+    if (!existe.ok) { erroInicio(textoDaResposta(existe)); return; }
+    definirSala(codigo);
+    const r = await api("POST", sala(`/entrar?nome=${encodeURIComponent(nomeDigitado())}`));
+    avisar(textoDaResposta(r));
+  } catch {
+    erroInicio("Sem conexão com o servidor");
+  } finally {
+    app.ocupado = false;
+    await atualizar();
+  }
+});
+
+$("btn-outra-sala").addEventListener("click", () => { definirSala(""); desenhar(); });
+
+$("btn-copiar").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(location.href);
+    avisar("Link copiado!", "ok");
+  } catch {
+    prompt("Copie o link e mande para os outros jogadores:", location.href);
+  }
+});
 
 $("btn-presente").addEventListener("click", confirmarPresenca);
 
@@ -683,7 +818,7 @@ $("btn-sair").addEventListener("click", () => {
   const pergunta = emJogo
     ? "Sair da partida? A rodada em andamento será reiniciada para os outros jogadores."
     : "Sair da partida?";
-  if (confirm(pergunta)) acao("POST", "/partida/sair");
+  if (confirm(pergunta)) acao("POST", sala("/sair"));
 });
 
 $("sala-jogadores").addEventListener("click", pedirExpulsao);
@@ -691,12 +826,12 @@ $("placar").addEventListener("click", pedirExpulsao);
 
 $("opcoes-palpite").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-palpite]");
-  if (b && !b.disabled) acao("POST", `/partida/rodada/palpite?palpite=${b.dataset.palpite}`);
+  if (b && !b.disabled) acao("POST", sala(`/rodada/palpite?palpite=${b.dataset.palpite}`));
 });
 
 $("mao").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-indice]");
-  if (b && !b.disabled) acao("POST", `/partida/rodada/jogar?indice=${b.dataset.indice}`);
+  if (b && !b.disabled) acao("POST", sala(`/rodada/jogar?indice=${b.dataset.indice}`));
 });
 
 ciclo();
