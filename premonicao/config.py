@@ -46,5 +46,11 @@ MAX_SALAS = 20
 MAX_TAMANHO_NOME = 20
 MIN_TAMANHO_NOME = 1
 N_RODADAS_PADRAO = 5
+RELOAD = True
 HOST = "0.0.0.0"
 PORTA_PADRAO = 8000
+
+
+#INDEX.html
+AVISO_INATIVIDADE = 10
+INTERVALO_MS = 1000 #intervalo de atualização da tela em milisegundos

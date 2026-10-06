@@ -9,14 +9,12 @@ import asyncio
 import secrets
 from contextlib import asynccontextmanager
 
-import os 
-
-from classes import partida, rodada, jogada, turno, jogador, status_partida, status_rodada, LIMITE_TURNO, LIMITE_OFFLINE
-
+from classes import partida, rodada, jogada, turno, jogador, status_partida, status_rodada
+from config import *
 
 async def vigiar_inativos():
     while True:
-        await asyncio.sleep(5)
+        await asyncio.sleep(INTERVALO_VIGIA)
         for codigo, jogo in list(jogos.items()):
 
             try:
@@ -24,7 +22,7 @@ async def vigiar_inativos():
             except Exception as e:
                 print("Erro ao expulsar inativos:", repr(e))
 
-            if len(jogo.sessoes) == 0 or time.monotonic() - jogo.ultima_atividade > 1800:
+            if len(jogo.sessoes) == 0 or time.monotonic() - jogo.ultima_atividade > LIMITE_SALA_INATIVA:
                 del jogos[codigo]
 
 @asynccontextmanager
@@ -40,10 +38,9 @@ app = FastAPI(lifespan = lifespan)
 
 jogos: dict[str, partida]= {}
 
-ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 def novo_codigo() -> str:
     while True:
-        c = "".join(secrets.choice(ALFABETO) for _ in range(5))
+        c = "".join(secrets.choice(ALFABETO) for _ in range(TAMANHO_CODIGO_SALA))
         if c not in jogos:
             return c
 
@@ -70,6 +67,17 @@ def usuario_atual(jogo: partida = Depends(sala_atual),
 def pagina():
     return FileResponse(Path(__file__).parent / "index.html")
 
+@app.get("/config")
+def configuracao():
+    return {
+        "max_tamanho_nome": MAX_TAMANHO_NOME,
+        "tamanho_codigo_sala": TAMANHO_CODIGO_SALA,
+        "n_rodadas_padrao": N_RODADAS_PADRAO,
+        "min_jogadores": MIN_JOGADORES,
+        "cartas_para_distribuir": NUMERO_DE_CARTAS_PADRAO - 1,
+        "aviso_inatividade": AVISO_INATIVIDADE,
+        "intervalo_ms": INTERVALO_MS,
+    }
 
 
 @app.get("/sala/{codigo}/eu")
@@ -78,10 +86,10 @@ def quem_sou_eu(usuario: jogador = Depends(usuario_atual)):
 
 @app.post("/sala")
 def criar_sala(nome: str, response: Response):
-    if(len(jogos) >= 20):
+    if(len(jogos) >= MAX_SALAS):
         raise HTTPException(503, "servidor cheio, tente denovo mais tarde")
-    if(len(nome) > 20 or len(nome) < 1):
-        raise HTTPException(422, "O nome deve ter entre 1 e 20 caracteres")
+    if(len(nome) > MAX_TAMANHO_NOME or len(nome) < MIN_TAMANHO_NOME):
+        raise HTTPException(422, f"O nome deve ter entre {MIN_TAMANHO_NOME} e {MAX_TAMANHO_NOME} caracteres")
     codigo = novo_codigo()
     jogos[codigo] = partida()
     resultado = jogos[codigo].entrar(nome, response, None)
@@ -90,8 +98,8 @@ def criar_sala(nome: str, response: Response):
 
 @app.post("/sala/{codigo}/entrar")
 def entrar( nome: str, response: Response, jogo: partida = Depends(sala_atual), sessao: str | None = Cookie(default = None)):
-    if(len(nome) > 20 or len(nome) < 1):
-        raise HTTPException(422, "O nome deve ter entre 1 e 20 caracteres")
+    if(len(nome) > MAX_TAMANHO_NOME or len(nome) < MIN_TAMANHO_NOME):
+        raise HTTPException(422, f"O nome deve ter entre {MIN_TAMANHO_NOME} e {MAX_TAMANHO_NOME} caracteres")
     return jogo.entrar(nome, response, sessao)
 
 @app.get("/sala/{codigo}/rodada/mao")
@@ -116,7 +124,7 @@ def consultar_estado_da_partida(jogo: partida = Depends(sala_atual)):
    return jogo.status_completo()
 
 @app.post("/sala/{codigo}/iniciar")
-async def iniciar_partida( n_rodadas: int = 10, jogo: partida = Depends(sala_atual), usuario: jogador = Depends(usuario_atual)):
+async def iniciar_partida( n_rodadas: int = N_RODADAS_PADRAO, jogo: partida = Depends(sala_atual), usuario: jogador = Depends(usuario_atual)):
     return jogo.iniciar( n_rodadas, usuario )
 
 @app.post("/sala/{codigo}/rodada/palpite")
@@ -161,4 +169,4 @@ def ver_eventos(desde: int | None = None, jogo: partida = Depends(sala_atual)):
     
 
 if __name__ == "__main__":
-    uvicorn.run("endpoints:app", host= "0.0.0.0", port=int(os.environ.get("PORT", 8000)), reload = False)
+    uvicorn.run("endpoints:app", host = HOST, port = PORTA_PADRAO, reload =RELOAD)

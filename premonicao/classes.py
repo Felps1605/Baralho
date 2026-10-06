@@ -1,19 +1,11 @@
 from __future__ import annotations
-from baralho import deck, carta,  valores_padrao
+from baralho import deck, carta
+from config import *
 from enum import Enum
 import secrets
 import time
 from fastapi import  Response, HTTPException
 from contextlib import asynccontextmanager
-
-import os
-
-LIMITE_TURNO = 60 
-LIMITE_OFFLINE = 30
-
-#EM_PRODUCAO = os.environ.get("PRODUCAO") == "1"
-EM_PRODUCAO = False
-
 
 
 class turno:
@@ -134,11 +126,11 @@ class rodada:
         return {"mensagem": "Palpite feito com sucesso, hora de jogar"}
 
 
-def numero_de_rodadas_valido(jogo, n : int )-> bool:
+def numero_de_rodadas_valido(jogo: partida, n : int )-> bool:
     if(n <= 0):
         print("Insira um numero inteiro maior que zero")
         return False
-    maximo = int( 51 / len(jogo.sessoes))
+    maximo = int( (NUMERO_DE_CARTAS_PADRAO - 1) / len(jogo.sessoes))
     if(n > maximo):
         print("Há jogadores demais para essa quantidade de rodadas, o máximo é ", maximo)
         return False
@@ -159,8 +151,8 @@ class status_partida(Enum):
     RODADAS = 2
     FINAL = 3
 
-valores_especificos = valores_padrao.copy()
-valores_especificos["A"] = 14
+valores_especificos = VALORES_PADRAO.copy()
+valores_especificos["A"] = VALOR_AS
 
 class partida:
     def __init__(self):
@@ -231,7 +223,7 @@ class partida:
                     print("Jogador ja está na partida")
                     return {"mensagem" : "Jogador ja está na partida"}
             
-            if len(self.sessoes) >= 10:
+            if len(self.sessoes) >= MAX_JOGADORES:
                 raise HTTPException(409, "Sala cheia")
 
             nome_final = f"Jogador {self.player_id}" if nome == "Jogador" else nome
@@ -242,7 +234,7 @@ class partida:
                 return {"mensagem" : "Nome excede o limite de 20 caracteres"}
 
             if self.status is status_partida.INICIO:
-                token = secrets.token_urlsafe(16) # gerando um token aleatorio
+                token = secrets.token_urlsafe(BYTES_TOKEN_SESSAO) # gerando um token aleatorio
                 novo_jogador = jogador(self.player_id, nome)
                 self.player_id += 1
                 
@@ -254,7 +246,7 @@ class partida:
                 response.set_cookie(key = "sessao",
                                     value = token,
                                     httponly = True,
-                                    samesite = "lax",
+                                    samesite = COOKIE_SAMESITE,
                                     secure = EM_PRODUCAO,
                                     ) # configurando o cookie
                 
@@ -303,8 +295,8 @@ class partida:
     def iniciar(self, n_rodadas, usuario):
         if usuario.admin is False:
             return {"mensagem" : "Apenas o administrador pode iniciar a partida"}
-        if len(self.sessoes) < 2:
-            return {"mensagem": "É preciso pelo menos 2 jogadores para inciar a partida"}
+        if len(self.sessoes) < MIN_JOGADORES:
+            return {"mensagem": f"É preciso pelo menos {MIN_JOGADORES} jogadores para inciar a partida"}
         if numero_de_rodadas_valido(self, n_rodadas) is False:
             return {"mensagem": "Numero de rodadas invalido"}
             
@@ -368,7 +360,7 @@ class partida:
         #codigo pra verificar quem pontuou e distribuir os pontos
         for j in rodada.palpites:
             if rodada.palpites[j] == rodada.vitorias[j]:
-                j.pontos += rodada.palpites[j] + 1
+                j.pontos += rodada.palpites[j] + BONUS_ACERTO_PALPITE
     
         if len(self.rodadas) != self.numero_de_rodadas:
     
@@ -448,7 +440,7 @@ class partida:
             
             if self.status == status_partida.RODADAS:
         
-                if (len(self.mesa) < 2):
+                if (len(self.mesa) < MIN_JOGADORES):
                     
                     self.status = status_partida.FINAL
                     self.aviso = f"{evento} e não há jogadores o suficiente para continuar. Fim da partida"

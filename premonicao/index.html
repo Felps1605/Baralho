@@ -200,7 +200,7 @@
   <section id="tela-inicio" class="painel escondido">
     <div class="inicio-bloco">
       <label for="inicio-nome" class="nota">Seu nome</label>
-      <input id="inicio-nome" placeholder="Como quer ser chamado" maxlength="20" autocomplete="off">
+      <input id="inicio-nome" placeholder="Como quer ser chamado" autocomplete="off">
     </div>
     <div class="inicio-bloco">
       <h2>Criar uma sala nova</h2>
@@ -209,7 +209,7 @@
     <div class="inicio-bloco">
       <h2>Entrar numa sala existente</h2>
       <form id="form-codigo" class="linha">
-        <input id="inicio-codigo" placeholder="CÓDIGO" maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <input id="inicio-codigo" placeholder="CÓDIGO" autocomplete="off" autocapitalize="characters" spellcheck="false">
         <button type="submit">Entrar</button>
       </form>
     </div>
@@ -220,7 +220,7 @@
   <section id="tela-entrar" class="painel escondido">
     <h2>Entrar na partida</h2>
     <form id="form-entrar" class="linha">
-      <input id="nome" placeholder="Seu nome" maxlength="20" autocomplete="off">
+      <input id="nome" placeholder="Seu nome" autocomplete="off">
       <button type="submit">Entrar</button>
     </form>
     <p id="entrar-motivo" class="nota motivo escondido"></p>
@@ -238,7 +238,7 @@
     <div id="sala-admin" class="escondido" style="margin-top:16px">
       <label for="n-rodadas" class="nota">Número de rodadas</label>
       <div class="linha" style="margin-top:4px">
-        <input id="n-rodadas" type="number" min="1" value="10">
+        <input id="n-rodadas" type="number" min="1">
         <button id="btn-iniciar">Iniciar partida</button>
       </div>
     </div>
@@ -333,9 +333,8 @@
 <script>
 const NAIPES = { copas: "♥", espadas: "♠", ouros: "♦", paus: "♣" };
 const VERMELHOS = ["copas", "ouros"];
-const INTERVALO_MS = 1000;
-const AVISO_INATIVIDADE_S = 10;   // mostra "você ainda está aí?" quando faltam tantos segundos no turno
 const TITULO_PAGINA = document.title;
+const CFG = {};   // preenchido por carregarConfig() com os valores do servidor
 
 const app = {
   codigo: lerCodigoDaUrl(),   // código da sala em que estou (vem de ?sala=ABC12); "" = na tela inicial
@@ -460,7 +459,7 @@ async function atualizar() {
 
 async function ciclo() {
   if (!app.ocupado) await atualizar();
-  setTimeout(ciclo, INTERVALO_MS);
+  setTimeout(ciclo, CFG.intervalo_ms);
 }
 
 // ---------- desenho da tela ----------
@@ -515,10 +514,10 @@ function desenharSala() {
 
   const admin = app.eu?.admin;
   mostrar("sala-admin", admin);
-  const maximo = Math.max(1, Math.floor(51 / Math.max(1, app.jogadores.length)));
+  const maximo = Math.max(1, Math.floor(CFG.cartas_para_distribuir / Math.max(1, app.jogadores.length)));
   $("n-rodadas").max = maximo;
   $("sala-nota").textContent = admin
-    ? `Com ${app.jogadores.length} jogador(es), o máximo é ${maximo} rodadas. É preciso pelo menos 2 jogadores.`
+    ? `Com ${app.jogadores.length} jogador(es), o máximo é ${maximo} rodadas. É preciso pelo menos ${CFG.min_jogadores} jogadores.`
     : "Aguardando o administrador iniciar a partida.";
 }
 
@@ -534,7 +533,7 @@ function desenharJogo() {
 
   // o servidor manda segundos_restantes só para quem está na vez
   const restante = e.segundos_restantes;
-  desenharPresenca(minhaVez && typeof restante === "number" && restante <= AVISO_INATIVIDADE_S, restante);
+  desenharPresenca(minhaVez && typeof restante === "number" && restante <= CFG.aviso_inatividade, restante);
 
   // trunfo e mesa
   trocarHTML($("trunfo"), m.trunfo ? htmlCarta(m.trunfo) : "");
@@ -834,7 +833,19 @@ $("mao").addEventListener("click", ev => {
   if (b && !b.disabled) acao("POST", sala(`/rodada/jogar?indice=${b.dataset.indice}`));
 });
 
-ciclo();
+// valores definidos no config.py do servidor (tamanho do nome, código da sala, rodadas...)
+async function carregarConfig() {
+  try {
+    const r = await api("GET", "/config");
+    if (r.ok) Object.assign(CFG, r.corpo);
+  } catch { /* sem conexão: o ciclo abaixo mostra o erro */ }
+  $("inicio-nome").maxLength = CFG.max_tamanho_nome;
+  $("nome").maxLength = CFG.max_tamanho_nome;
+  $("inicio-codigo").maxLength = CFG.tamanho_codigo_sala;
+  $("n-rodadas").value = CFG.n_rodadas_padrao;
+}
+
+carregarConfig().then(ciclo);
 </script>
 </body>
 </html>

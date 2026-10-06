@@ -1,28 +1,6 @@
 import random
 import sys
-
-valores_padrao = {
-    "A": 1,
-    "2": 2,
-    "3": 3,
-    "4": 4,
-    "5": 5,
-    "6": 6,
-    "7": 7,
-    "8": 8,
-    "9": 9,
-    "10": 10,
-    "J": 11,
-    "Q": 12,
-    "K": 13
-}
-
-naipes = [
-    "copas",
-    "espadas",
-    "ouros",
-    "paus"
-]
+from config import *
 
 
 class carta:
@@ -45,7 +23,7 @@ class deck:
         self.rotulo : str = rotulo
 
     
-    def construir_deck(self: deck,  naipes: list[str] = naipes, valores: dict[str,int] = valores_padrao, ):
+    def construir_deck(self: deck,  naipes: list[str] = NAIPES, valores: dict[str,int] = VALORES_PADRAO, ):
         self.cartas = []
         
         for naipe in naipes:
@@ -94,7 +72,7 @@ class deck:
         for i, card in enumerate(self.cartas):
             valor = card.valor
             if card.naipe == naipe_trunfo:
-                valor += 1000
+                valor += BONUS_TRUNFO
             if valor > maior_valor:
                 maior_valor = valor
                 indice = i
