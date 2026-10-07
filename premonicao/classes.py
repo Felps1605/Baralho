@@ -1,5 +1,5 @@
 from __future__ import annotations
-from baralho import deck, carta
+from baralho import Deck, Carta
 from config import *
 from enum import Enum
 import secrets
@@ -8,15 +8,15 @@ from fastapi import  Response, HTTPException
 from contextlib import asynccontextmanager
 
 
-class turno:
+class Turno:
     #disposição dos jogadores na mesa
-    def __init__(self, ordem: list[jogador]):
+    def __init__(self, ordem: list[Jogador]):
         self.ordem = ordem
         self.posicao = 0
         self.atual.ultima_atividade_turno = time.monotonic()
 
     @property
-    def atual(self) -> jogador:
+    def atual(self) -> Jogador:
         jogador_atual = self.ordem[self.posicao]
         
         return jogador_atual
@@ -30,11 +30,11 @@ class turno:
             self.posicao += 1
             self.atual.ultima_atividade_turno = time.monotonic()
 
-def ordem_a_partir_de(mesa: list[jogador], inicio: int)-> list[jogador]:
+def ordem_a_partir_de(mesa: list[Jogador], inicio: int)-> list[Jogador]:
     inicio %= len(mesa)
     return mesa[inicio:] + mesa[:inicio]
     
-class jogador:
+class Jogador:
     def __init__(self, id: int, nome: str = "Jogador"):
 
 
@@ -48,16 +48,16 @@ class jogador:
         self.ultima_atividade_turno: float | None = None
         self.ultimo_momento_online = time.monotonic()
 
-        self.mao = deck("Mão")
+        self.mao = Deck("Mão")
         self.mao.cartas = [] 
         
         
-class jogada:
-    turno_jogada: turno # setado na função nova_jogada da rodada
-    def __init__(self, turno_jogada: turno):
-        self.turno_jogada: turno = turno_jogada
-        self.monte: deck = deck() 
-        self.vencedor: jogador | None = None
+class Jogada:
+    turno_jogada: Turno # setado na função nova_jogada da rodada
+    def __init__(self, turno_jogada: Turno):
+        self.turno_jogada: Turno = turno_jogada
+        self.monte: Deck = Deck() 
+        self.vencedor: Jogador | None = None
         
 
 class status_rodada(Enum):
@@ -66,34 +66,34 @@ class status_rodada(Enum):
     FINAL = 3
 
 
-class rodada:
+class Rodada:
     
     
-    def __init__(self, turno_palpites: turno, n_cartas: int):
+    def __init__(self, turno_palpites: Turno, n_cartas: int):
         self.status: str = status_rodada.PALPITES  
-        self.bolo = deck("Bolo")
+        self.bolo = Deck("Bolo")
         self.bolo.construir_deck(valores = valores_especificos)
         self.bolo.embaralhar()
         self.carta_da_rodada = self.bolo.cartas.pop()
-        self.jogada_atual: jogada | None = None
-        self.jogadas: list[jogada] = []
-        self.palpites: dict[jogador, int] = {} # têm uma ordem especifica que rotaciona a cada rodada
-        self.vitorias: dict[jogador, int] = {}
-        self.turno_palpites: turno = turno_palpites
+        self.jogada_atual: Jogada | None = None
+        self.jogadas: list[Jogada] = []
+        self.palpites: dict[Jogador, int] = {} # têm uma ordem especifica que rotaciona a cada rodada
+        self.vitorias: dict[Jogador, int] = {}
+        self.turno_palpites: Turno = turno_palpites
         for j in self.turno_palpites.ordem:
             self.vitorias[j] = 0
         self.numero_de_cartas: int = n_cartas
         
 
     def nova_jogada(self, primeiro_a_jogar: int = 0):
-        self.jogada_atual = jogada(turno(ordem_a_partir_de(self.turno_palpites.ordem, primeiro_a_jogar)))
+        self.jogada_atual = Jogada(Turno(ordem_a_partir_de(self.turno_palpites.ordem, primeiro_a_jogar)))
 
     def ver_palpites(self):
         soma = sum(self.palpites.values())
         palpites = {j.nome: p for j, p in self.palpites.items()}
         return {"palpites": palpites, "soma" : soma}
 
-    def fazer_palpite(self, palpite: int, usuario: jogador):
+    def fazer_palpite(self, palpite: int, usuario: Jogador):
         
         
         if self.status is not status_rodada.PALPITES:
@@ -126,7 +126,7 @@ class rodada:
         return {"mensagem": "Palpite feito com sucesso, hora de jogar"}
 
 
-def numero_de_rodadas_valido(jogo: partida, n : int )-> bool:
+def numero_de_rodadas_valido(jogo: Partida, n : int )-> bool:
     if(n <= 0):
         print("Insira um numero inteiro maior que zero")
         return False
@@ -138,11 +138,11 @@ def numero_de_rodadas_valido(jogo: partida, n : int )-> bool:
     return True
 
 
-def cartas_na_mesa(j: jogada) -> list[dict]:
+def cartas_na_mesa(j: Jogada) -> list[dict]:
     # o monte recebe as cartas na mesma ordem do turno da jogada
     return [{"jogador": jog.nome, "carta": c} for jog, c in zip(j.turno_jogada.ordem, j.monte.cartas)]
 
-def placar_da_rodada(r: rodada) -> list[dict]:
+def placar_da_rodada(r: Rodada) -> list[dict]:
     return [{"nome": j.nome, "palpite": r.palpites.get(j), "vitorias": r.vitorias[j]} for j in r.turno_palpites.ordem]
     
 
@@ -154,14 +154,14 @@ class status_partida(Enum):
 valores_especificos = VALORES_PADRAO.copy()
 valores_especificos["A"] = VALOR_AS
 
-class partida:
+class Partida:
     def __init__(self):
         self.status: str = status_partida.INICIO
-        self.sessoes: dict[str, jogador] = {}
-        self.mesa: list[jogador] = [] #disposicao dos jogadores na mesa
+        self.sessoes: dict[str, Jogador] = {}
+        self.mesa: list[Jogador] = [] #disposicao dos jogadores na mesa
         self.numero_de_rodadas: int = 0
-        self.rodada_atual: rodada | None = None
-        self.rodadas: list[rodada] = []
+        self.rodada_atual: Rodada | None = None
+        self.rodadas: list[Rodada] = []
 
         self.player_id = 1
         self.aviso: str | None = None
@@ -181,7 +181,7 @@ class partida:
             return {"ultimo": ultimo, "eventos": []}
         return {"ultimo": ultimo, "eventos": self.eventos[desde:]}
 
-    def jogador_da_vez(self) -> jogador | None:
+    def jogador_da_vez(self) -> Jogador | None:
         r = self.rodada_atual
         if self.status is not status_partida.RODADAS or r is None:
             return None
@@ -194,7 +194,7 @@ class partida:
 
     def nova_rodada(self, n_cartas: int):
 
-        self.rodada_atual = rodada( turno(ordem_a_partir_de(self.mesa, n_cartas - 1)), n_cartas) 
+        self.rodada_atual = Rodada( Turno(ordem_a_partir_de(self.mesa, n_cartas - 1)), n_cartas) 
         self.aviso = None
         
         for j in self.mesa:
@@ -235,13 +235,13 @@ class partida:
 
             if self.status is status_partida.INICIO:
                 token = secrets.token_urlsafe(BYTES_TOKEN_SESSAO) # gerando um token aleatorio
-                novo_jogador = jogador(self.player_id, nome)
+                novo_jogador = Jogador(self.player_id, nome)
                 self.player_id += 1
                 
                 if not any(j.admin for j in self.sessoes.values()):
                     novo_jogador.admin = True
                 
-                self.sessoes[token] = novo_jogador # criando uma correspondencia [token : jogador ]no dicionario sessoes 
+                self.sessoes[token] = novo_jogador # criando uma correspondencia [token : Jogador ]no dicionario sessoes 
                 
                 response.set_cookie(key = "sessao",
                                     value = token,
@@ -311,7 +311,7 @@ class partida:
         return {"mensagem": "Partida já começou"} 
 
     
-    def fazer_jogada(self, indice: int, usuario: jogador):
+    def fazer_jogada(self, indice: int, usuario: Jogador):
     
         if self.status is not status_partida.RODADAS:
             return {"mensagem": "Partida não está na fase de rodadas"} 
@@ -392,7 +392,7 @@ class partida:
             "ultima_rodada": {"numero": ultima_rodada.numero_de_cartas, "placar": placar_da_rodada(ultima_rodada)} if ultima_rodada else None,
             }
     
-    def encerrar(self, usuario: jogador):
+    def encerrar(self, usuario: Jogador):
         if not usuario.admin:
             return {"mensagem": "Apenas o administrador pode encerrar a partida"}
         if self.status is status_partida.FINAL:
@@ -462,7 +462,7 @@ class partida:
         return resultado
 
       
-    def expulsar_jogador(self, administrador: jogador, id_alvo: int):
+    def expulsar_jogador(self, administrador: Jogador, id_alvo: int):
         
         if administrador.admin is not True:
             return {"mensagem": "Jogador não tem autorização para expulsar outros jogadores"}

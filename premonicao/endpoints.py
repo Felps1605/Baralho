@@ -9,7 +9,7 @@ import asyncio
 import secrets
 from contextlib import asynccontextmanager
 
-from classes import partida, rodada, jogada, turno, jogador, status_partida, status_rodada
+from classes import Partida, Rodada, Jogada, Turno, Jogador, status_partida, status_rodada
 from config import *
 
 async def vigiar_inativos():
@@ -34,9 +34,8 @@ async def lifespan(app):
 
 app = FastAPI(lifespan = lifespan)
 
-#jogo = partida()
 
-jogos: dict[str, partida]= {}
+jogos: dict[str, Partida]= {}
 
 def novo_codigo() -> str:
     while True:
@@ -44,15 +43,15 @@ def novo_codigo() -> str:
         if c not in jogos:
             return c
 
-def sala_atual(codigo: str)-> partida:
+def sala_atual(codigo: str)-> Partida:
     jogo = jogos.get(codigo.upper())
     if jogo is None:
         raise HTTPException(404, "Sala não encontrada")
     jogo.ultima_atividade = time.monotonic()
     return jogo
 
-def usuario_atual(jogo: partida = Depends(sala_atual),
-                  sessao: str | None = Cookie(default = None)) -> jogador:
+def usuario_atual(jogo: Partida = Depends(sala_atual),
+                  sessao: str | None = Cookie(default = None)) -> Jogador:
     
     if sessao in jogo.removidos:
         raise HTTPException(status_code = 401, detail = jogo.removidos[sessao]) # ex: "Você foi expulso por ana"
@@ -81,7 +80,7 @@ def configuracao():
 
 
 @app.get("/sala/{codigo}/eu")
-def quem_sou_eu(usuario: jogador = Depends(usuario_atual)):
+def quem_sou_eu(usuario: Jogador = Depends(usuario_atual)):
     return {"nome": usuario.nome, "id": usuario.id, "admin": usuario.admin}
 
 @app.post("/sala")
@@ -91,79 +90,79 @@ def criar_sala(nome: str, response: Response):
     if(len(nome) > MAX_TAMANHO_NOME or len(nome) < MIN_TAMANHO_NOME):
         raise HTTPException(422, f"O nome deve ter entre {MIN_TAMANHO_NOME} e {MAX_TAMANHO_NOME} caracteres")
     codigo = novo_codigo()
-    jogos[codigo] = partida()
+    jogos[codigo] = Partida()
     resultado = jogos[codigo].entrar(nome, response, None)
     return {"codigo": codigo, "resultado": resultado}
 
 
 @app.post("/sala/{codigo}/entrar")
-def entrar( nome: str, response: Response, jogo: partida = Depends(sala_atual), sessao: str | None = Cookie(default = None)):
+def entrar( nome: str, response: Response, jogo: Partida = Depends(sala_atual), sessao: str | None = Cookie(default = None)):
     if(len(nome) > MAX_TAMANHO_NOME or len(nome) < MIN_TAMANHO_NOME):
         raise HTTPException(422, f"O nome deve ter entre {MIN_TAMANHO_NOME} e {MAX_TAMANHO_NOME} caracteres")
     return jogo.entrar(nome, response, sessao)
 
 @app.get("/sala/{codigo}/rodada/mao")
-def ver_mao(jogo: partida = Depends(sala_atual), usuario: jogador = Depends(usuario_atual)):
+def ver_mao(jogo: Partida = Depends(sala_atual), usuario: Jogador = Depends(usuario_atual)):
     return usuario.mao
 
 
 @app.get("/sala/{codigo}/rodada/palpites")
-def ver_palpites(jogo: partida = Depends(sala_atual)):
+def ver_palpites(jogo: Partida = Depends(sala_atual)):
     return jogo.rodada_atual.ver_palpites() if jogo.rodada_atual else {}
     
 @app.get("/sala/{codigo}/rodada/carta")
-def ver_carta_da_rodada(jogo: partida = Depends(sala_atual)):
+def ver_carta_da_rodada(jogo: Partida = Depends(sala_atual)):
     return jogo.rodada_atual.carta_da_rodada if jogo.rodada_atual else None
 
 @app.get("/sala/{codigo}/jogadores/")
-async def ver_lista_de_jogadores(jogo: partida = Depends(sala_atual)):
+async def ver_lista_de_jogadores(jogo: Partida = Depends(sala_atual)):
     return [{"nome": j.nome, "id": j.id, "pontos": j.pontos} for j in jogo.sessoes.values()]
 
 @app.get("/sala/{codigo}/estado")
-def consultar_estado_da_partida(jogo: partida = Depends(sala_atual)):
+def consultar_estado_da_partida(jogo: Partida = Depends(sala_atual)):
    return jogo.status_completo()
 
 @app.post("/sala/{codigo}/iniciar")
-async def iniciar_partida( n_rodadas: int = N_RODADAS_PADRAO, jogo: partida = Depends(sala_atual), usuario: jogador = Depends(usuario_atual)):
+async def iniciar_partida( n_rodadas: int = N_RODADAS_PADRAO, jogo: Partida = Depends(sala_atual), usuario: Jogador = Depends(usuario_atual)):
     return jogo.iniciar( n_rodadas, usuario )
 
 @app.post("/sala/{codigo}/rodada/palpite")
-def fazer_palpite(palpite: int, jogo: partida = Depends(sala_atual), usuario: jogador = Depends(usuario_atual)):
+def fazer_palpite(palpite: int, jogo: Partida = Depends(sala_atual), usuario: Jogador = Depends(usuario_atual)):
     #provavelmente deveria limpar isso
     return jogo.rodada_atual.fazer_palpite(palpite, usuario) if jogo.status == status_partida.RODADAS else {"mensagem": "Só é possível fazer palpites durante a fase de rodadas"}
     
 @app.post("/sala/{codigo}/rodada/jogar")
-def fazer_jogada(indice: int, jogo: partida = Depends(sala_atual), usuario: jogador = Depends(usuario_atual)):
+def fazer_jogada(indice: int, jogo: Partida = Depends(sala_atual), usuario: Jogador = Depends(usuario_atual)):
     return jogo.fazer_jogada(indice, usuario) 
 
 @app.post("/sala/{codigo}/rodada/presente")
-def presente(presente: bool = False, jogo: partida = Depends(sala_atual), usuario: jogador = Depends(usuario_atual)):
+def presente(presente: bool = False, jogo: Partida = Depends(sala_atual), usuario: Jogador = Depends(usuario_atual)):
     if presente and jogo.jogador_da_vez() is usuario:
         usuario.ultima_atividade_turno = time.monotonic()
     return presente
     
 @app.get("/sala/{codigo}/mesa")
-def ver_mesa(jogo: partida = Depends(sala_atual)):
+def ver_mesa(jogo: Partida = Depends(sala_atual)):
     return jogo.ver_mesa()
    
 @app.post("/sala/{codigo}/encerrar")
-def encerrar_partida(jogo: partida = Depends(sala_atual), usuario: jogador = Depends(usuario_atual)):
+def encerrar_partida(jogo: Partida = Depends(sala_atual), usuario: Jogador = Depends(usuario_atual)):
     return jogo.encerrar(usuario)
 
 @app.post("/sala/{codigo}/nova")
-def nova_partida(jogo: partida = Depends(sala_atual), usuario: jogador = Depends(usuario_atual)):
+def nova_partida(jogo: Partida = Depends(sala_atual), usuario: Jogador = Depends(usuario_atual)):
     return jogo.nova_partida(usuario)
     
 @app.post("/sala/{codigo}/sair")
-def sair_da_partida(response: Response, jogo: partida = Depends(sala_atual), sessao: str | None = Cookie(default = None)):
+def sair_da_partida(response: Response, jogo: Partida = Depends(sala_atual), sessao: str | None = Cookie(default = None)):
     return jogo.sair_da_partida(response, sessao)
 
 @app.post("/sala/{codigo}/expulsar")
-def expulsar_jogador(id: int, jogo: partida = Depends(sala_atual), usuario: jogador = Depends(usuario_atual)):
+def expulsar_jogador(id: int, jogo: Partida = Depends(sala_atual), usuario: Jogador = Depends(usuario_atual)):
     return jogo.expulsar_jogador(usuario, id)
 
 @app.get("/sala/{codigo}/eventos")
-def ver_eventos(desde: int | None = None, jogo: partida = Depends(sala_atual)):
+def ver_eventos(desde: int | None = None, jogo: Partida = Depends(sala_atual)):
     return jogo.eventos_desde(desde)
     
     

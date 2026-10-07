@@ -3,7 +3,7 @@ import sys
 from config import *
 
 
-class carta:
+class Carta:
     
     def __init__(self, valor_char: str, valor: int , naipe: str):
         self.valor_char: str = valor_char
@@ -16,26 +16,26 @@ class carta:
 
 
 
-class deck:
+class Deck:
     def __init__(self, rotulo: str = "Deck"):
 
-        self.cartas : list[carta] = []
+        self.cartas : list[Carta] = []
         self.rotulo : str = rotulo
 
     
-    def construir_deck(self: deck,  naipes: list[str] = NAIPES, valores: dict[str,int] = VALORES_PADRAO, ):
+    def construir_deck(self: Deck,  naipes: list[str] = NAIPES, valores: dict[str,int] = VALORES_PADRAO, ):
         self.cartas = []
         
         for naipe in naipes:
             for valor in valores:
-                card = carta(valor, valores[valor], naipe)
+                card = Carta(valor, valores[valor], naipe)
                 self.cartas.append(card)
 
-    def exibir(self: deck, indices: bool = False):
+    def exibir(self: Deck, indices: bool = False):
         print("\n")
         print(f"{self.rotulo}:")
         if self.cartas == []:
-            print("Nenhuma carta\n")
+            print("Nenhuma Carta\n")
             return
         
         if indices:
@@ -48,23 +48,23 @@ class deck:
 
         print("\n")
 
-    def embaralhar(self: deck):
+    def embaralhar(self: Deck):
         random.shuffle(self.cartas)
         random.shuffle(self.cartas)
 
-    def comprar(self: deck, bolo: deck, quantidade: int = 1):
+    def comprar(self: Deck, bolo: Deck, quantidade: int = 1):
         for i in range(quantidade):
             self.cartas.append(bolo.cartas.pop())
 
-    def jogar(self: deck, alvo: deck, indice: int):
+    def jogar(self: Deck, alvo: Deck, indice: int):
         alvo.cartas.append(self.cartas.pop(indice))
 
-    def juntar(self: deck, bolos: list[deck]):
+    def juntar(self: Deck, bolos: list[Deck]):
         for bolo in bolos:
             self.cartas.extend(bolo.cartas)
             bolo.cartas = []
 
-    def maior_carta(self: deck, naipe_trunfo: str | None = None)-> int: #devolve o indice da maior carta
+    def maior_carta(self: Deck, naipe_trunfo: str | None = None)-> int: #devolve o indice da maior carta
 
         minimo_inteiro = -sys.maxsize - 1
         maior_valor = minimo_inteiro
