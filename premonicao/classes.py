@@ -230,7 +230,7 @@ class Partida:
             if nome_final in [j.nome for j in self.sessoes.values()]:
                 return {"mensagem" : "Nome ja está em uso, escolha outro"}
             
-            if len(nome_final) > 20:
+            if len(nome_final) > MAX_TAMANHO_NOME:
                 return {"mensagem" : "Nome excede o limite de 20 caracteres"}
 
             if self.status is status_partida.INICIO:
