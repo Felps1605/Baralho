@@ -1,7 +1,7 @@
 import random
 import sys
 
-from dominio.config import *
+from dominio.config import NAIPES, VALORES_PADRAO, BONUS_TRUNFO
 
 
 class Carta:
