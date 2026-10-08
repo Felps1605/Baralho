@@ -1,5 +1,6 @@
 
 from __future__ import annotations
+
 import uvicorn
 from fastapi import FastAPI, Response, Cookie, Depends, HTTPException
 from fastapi.responses import FileResponse
@@ -9,8 +10,9 @@ import asyncio
 import secrets
 from contextlib import asynccontextmanager
 
-from dominio.partida import Partida, Rodada, Jogada, Turno, Jogador
-from dominio.enums import StatusPartida, StatusRodada
+from dominio.jogador import Jogador
+from dominio.partida import Partida
+from dominio.enums import StatusPartida
 from dominio.config import *
 
 async def vigiar_inativos():

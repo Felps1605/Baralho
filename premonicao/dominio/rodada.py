@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dominio.baralho import Deck
 from dominio.jogador import Jogador
 from dominio.turno import Turno, ordem_a_partir_de

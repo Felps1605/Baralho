@@ -1,5 +1,6 @@
 import random
 import sys
+
 from dominio.config import *
 
 

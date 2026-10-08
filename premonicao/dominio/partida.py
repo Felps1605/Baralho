@@ -1,15 +1,17 @@
 from __future__ import annotations
-from dominio.baralho import Deck, Carta
+
+import secrets
+import time
+from fastapi import  Response, HTTPException #preciso dar um jeito de tirar daqui
+
 from dominio.config import *
 from dominio.enums import StatusPartida, StatusRodada
 from dominio.jogador import Jogador
 from dominio.turno import Turno, ordem_a_partir_de
 from dominio.jogada import Jogada
 from dominio.rodada import Rodada
-import secrets
-import time
-from fastapi import  Response, HTTPException
-from contextlib import asynccontextmanager
+
+
 
 
 def numero_de_rodadas_valido(jogo: Partida, n : int )-> bool:
@@ -354,15 +356,15 @@ class Partida:
         self.remover_jogador(token, tipo = "expulso", motivo = f"Você foi expulso por {administrador.nome}", evento = f"{alvo.nome} foi expulso por {administrador.nome}")
         return {"mensagem": f"{alvo.nome} foi expulso"}
 
-    def expulsar_inativos(self, LIMITE_TURNO, LIMITE_OFFLINE ):
+    def expulsar_inativos(self, limite_turno, limite_offline ):
         agora = time.monotonic()
         a_remover: list[tuple] = []
         for token, j in self.sessoes.items():
             
-            if agora - j.ultimo_momento_online > LIMITE_OFFLINE:
+            if agora - j.ultimo_momento_online > limite_offline:
                 a_remover.append((token, f"Você foi expulso por tempo demais fora da página", f"{j.nome} foi desconectado por ficar tempo demais fora da página"))
             
-            elif j is self.jogador_da_vez() and j.ultima_atividade_turno and agora - j.ultima_atividade_turno > LIMITE_TURNO:
+            elif j is self.jogador_da_vez() and j.ultima_atividade_turno and agora - j.ultima_atividade_turno > limite_turno:
                 a_remover.append((token, f"Você foi expulso por inatividade", f"{j.nome} foi desconectado por inatividade durante o turno"))
             
         for token, motivo, evento in a_remover:

@@ -1,6 +1,9 @@
 from __future__ import annotations
-from dominio.jogador import Jogador
+
 import time
+
+from dominio.jogador import Jogador
+
 
 
 class Turno:
