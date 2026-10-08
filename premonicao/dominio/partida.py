@@ -2,16 +2,25 @@ from __future__ import annotations
 
 import secrets
 import time
-from fastapi import  Response, HTTPException #preciso dar um jeito de tirar daqui
 
-from dominio.config import (NUMERO_DE_CARTAS_PADRAO, MAX_JOGADORES, MIN_JOGADORES, MAX_TAMANHO_NOME, BYTES_TOKEN_SESSAO, COOKIE_SAMESITE, EM_PRODUCAO, LIMITE_TURNO, BONUS_ACERTO_PALPITE)
+from fastapi import HTTPException, Response  #preciso dar um jeito de tirar daqui
+
+from dominio.config import (
+    BONUS_ACERTO_PALPITE,
+    BYTES_TOKEN_SESSAO,
+    COOKIE_SAMESITE,
+    EM_PRODUCAO,
+    LIMITE_TURNO,
+    MAX_JOGADORES,
+    MAX_TAMANHO_NOME,
+    MIN_JOGADORES,
+    NUMERO_DE_CARTAS_PADRAO,
+)
 from dominio.enums import StatusPartida, StatusRodada
-from dominio.jogador import Jogador
-from dominio.turno import Turno, ordem_a_partir_de
 from dominio.jogada import Jogada
+from dominio.jogador import Jogador
 from dominio.rodada import Rodada
-
-
+from dominio.turno import Turno, ordem_a_partir_de
 
 
 def numero_de_rodadas_valido(jogo: Partida, n : int )-> bool:

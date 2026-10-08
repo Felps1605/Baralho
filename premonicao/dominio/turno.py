@@ -5,7 +5,6 @@ import time
 from dominio.jogador import Jogador
 
 
-
 class Turno:
     #disposição dos jogadores na mesa
     def __init__(self, ordem: list[Jogador]):

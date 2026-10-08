@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 import sys
 
-from dominio.config import NAIPES, VALORES_PADRAO, BONUS_TRUNFO
+from dominio.config import BONUS_TRUNFO, NAIPES, VALORES_PADRAO
 
 
 class Carta:

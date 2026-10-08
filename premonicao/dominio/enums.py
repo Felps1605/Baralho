@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class StatusRodada(Enum):
     PALPITES = 1
     JOGADAS = 2

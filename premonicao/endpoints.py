@@ -1,25 +1,38 @@
 
 from __future__ import annotations
 
-import uvicorn
-from fastapi import FastAPI, Response, Cookie, Depends, HTTPException
-from fastapi.responses import FileResponse
-from pathlib import Path
-import time
 import asyncio
 import secrets
+import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
+import uvicorn
+from dominio.config import (
+    ALFABETO,
+    AVISO_INATIVIDADE,
+    HOST,
+    INTERVALO_MS,
+    INTERVALO_VIGIA,
+    LIMITE_OFFLINE,
+    LIMITE_SALA_INATIVA,
+    LIMITE_TURNO,
+    MAX_SALAS,
+    MAX_TAMANHO_NOME,
+    MIN_JOGADORES,
+    MIN_TAMANHO_NOME,
+    N_RODADAS_PADRAO,
+    NUMERO_DE_CARTAS_PADRAO,
+    PORTA_PADRAO,
+    RELOAD,
+    TAMANHO_CODIGO_SALA,
+)
+from dominio.enums import StatusPartida
 from dominio.jogador import Jogador
 from dominio.partida import Partida
-from dominio.enums import StatusPartida
-from dominio.config import (
-                            INTERVALO_VIGIA, LIMITE_TURNO, LIMITE_OFFLINE, LIMITE_SALA_INATIVA,
-                            ALFABETO, TAMANHO_CODIGO_SALA, MAX_TAMANHO_NOME, MIN_TAMANHO_NOME,
-                            N_RODADAS_PADRAO, MIN_JOGADORES, NUMERO_DE_CARTAS_PADRAO, 
-                            AVISO_INATIVIDADE, INTERVALO_MS, MAX_SALAS,
-                            HOST, PORTA_PADRAO, RELOAD
-                            )
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Response
+from fastapi.responses import FileResponse
+
 
 async def vigiar_inativos():
     while True:

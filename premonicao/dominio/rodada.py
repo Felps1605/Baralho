@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from dominio.baralho import Deck
-from dominio.jogador import Jogador
-from dominio.turno import Turno, ordem_a_partir_de
+from dominio.config import valores_especificos
 from dominio.enums import StatusRodada
 from dominio.jogada import Jogada
-from dominio.config import valores_especificos
+from dominio.jogador import Jogador
+from dominio.turno import Turno, ordem_a_partir_de
+
 
 class Rodada:
     
