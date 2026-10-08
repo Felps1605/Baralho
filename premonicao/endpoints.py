@@ -18,6 +18,8 @@ from dominio.config import (
     LIMITE_SALA_INATIVA,
     LIMITE_TURNO,
     MAX_SALAS,
+    COOKIE_SAMESITE,
+    EM_PRODUCAO,
     MAX_TAMANHO_NOME,
     MIN_JOGADORES,
     MIN_TAMANHO_NOME,
@@ -83,6 +85,14 @@ def usuario_atual(jogo: Partida = Depends(sala_atual),
     j.ultimo_momento_online = time.monotonic()
     return j 
 
+def definir_cookie_sessao(response: Response, token: str):
+    response.set_cookie(key = "sessao",
+                        value = token,
+                        httponly = True,
+                        samesite = COOKIE_SAMESITE,
+                        secure = EM_PRODUCAO,
+                        )
+
 
 @app.get("/")
 def pagina():
@@ -113,7 +123,9 @@ def criar_sala(nome: str, response: Response):
         raise HTTPException(422, f"O nome deve ter entre {MIN_TAMANHO_NOME} e {MAX_TAMANHO_NOME} caracteres")
     codigo = novo_codigo()
     jogos[codigo] = Partida()
-    resultado = jogos[codigo].entrar(nome, response, None)
+    resultado, token = jogos[codigo].entrar(nome, None)
+    if token:
+        definir_cookie_sessao(response, token)
     return {"codigo": codigo, "resultado": resultado}
 
 
@@ -121,7 +133,11 @@ def criar_sala(nome: str, response: Response):
 def entrar( nome: str, response: Response, jogo: Partida = Depends(sala_atual), sessao: str | None = Cookie(default = None)):
     if(len(nome) > MAX_TAMANHO_NOME or len(nome) < MIN_TAMANHO_NOME):
         raise HTTPException(422, f"O nome deve ter entre {MIN_TAMANHO_NOME} e {MAX_TAMANHO_NOME} caracteres")
-    return jogo.entrar(nome, response, sessao)
+    resultado, token = jogo.entrar(nome, sessao)
+    if token:
+        definir_cookie_sessao(response, token)
+    return resultado
+                    
 
 @app.get("/sala/{codigo}/rodada/mao")
 def ver_mao(jogo: Partida = Depends(sala_atual), usuario: Jogador = Depends(usuario_atual)):
@@ -177,7 +193,9 @@ def nova_partida(jogo: Partida = Depends(sala_atual), usuario: Jogador = Depends
     
 @app.post("/sala/{codigo}/sair")
 def sair_da_partida(response: Response, jogo: Partida = Depends(sala_atual), sessao: str | None = Cookie(default = None)):
-    return jogo.sair_da_partida(response, sessao)
+    resultado = jogo.sair_da_partida(sessao)
+    response.delete_cookie("sessao")
+    return resultado
 
 @app.post("/sala/{codigo}/expulsar")
 def expulsar_jogador(id: int, jogo: Partida = Depends(sala_atual), usuario: Jogador = Depends(usuario_atual)):

@@ -3,13 +3,10 @@ from __future__ import annotations
 import secrets
 import time
 
-from fastapi import  Response  #preciso dar um jeito de tirar daqui
 
 from dominio.config import (
     BONUS_ACERTO_PALPITE,
     BYTES_TOKEN_SESSAO,
-    COOKIE_SAMESITE,
-    EM_PRODUCAO,
     LIMITE_TURNO,
     MAX_JOGADORES,
     MAX_TAMANHO_NOME,
@@ -106,21 +103,22 @@ class Partida:
     def reiniciar_rodada(self, n_cartas: int):
         self.nova_rodada(n_cartas)
 
-    def entrar(self, nome: str, response: Response, sessao: str | None ):
+    def entrar(self, nome: str, sessao: str | None ):
         
             if sessao is not None and sessao in self.sessoes:
-                    print("Jogador ja está na partida")
-                    return {"mensagem" : "Jogador ja está na partida"}
+                print("Jogador ja está na partida")
+                return {"mensagem" : "Jogador ja está na partida"}, None
             
             if len(self.sessoes) >= MAX_JOGADORES:
-                raise SalaCheia("Sala Cheia")
+               #raise SalaCheia("Sala Cheia")
+               return {"mensagem" : "Sala cheia"}, None
 
             nome_final = f"Jogador {self.player_id}" if nome == "Jogador" else nome
             if nome_final in [j.nome for j in self.sessoes.values()]:
-                return {"mensagem" : "Nome ja está em uso, escolha outro"}
+                return {"mensagem" : "Nome ja está em uso, escolha outro"}, None
             
             if len(nome_final) > MAX_TAMANHO_NOME:
-                return {"mensagem" : "Nome excede o limite de 20 caracteres"}
+                return {"mensagem" : "Nome excede o limite de 20 caracteres"}, None
 
             if self.status is StatusPartida.INICIO:
                 token = secrets.token_urlsafe(BYTES_TOKEN_SESSAO) # gerando um token aleatorio
@@ -132,18 +130,11 @@ class Partida:
                 
                 self.sessoes[token] = novo_jogador # criando uma correspondencia [token : Jogador ]no dicionario sessoes 
                 
-                response.set_cookie(key = "sessao",
-                                    value = token,
-                                    httponly = True,
-                                    samesite = COOKIE_SAMESITE,
-                                    secure = EM_PRODUCAO,
-                                    ) # configurando o cookie
-                
                 self.registrar_evento("entrou", f"{novo_jogador.nome} entrou na partida", novo_jogador.id)
                 
-                return {"mensagem": f"{novo_jogador.nome} entrou no jogo"}
+                return {"mensagem": f"{novo_jogador.nome} entrou no jogo"}, token
             
-            return {"mensagem": "Jogo já está em andamento, não é possível entrar"}
+            return {"mensagem": "Jogo já está em andamento, não é possível entrar"}, None
 
     def status_completo(self):
         if self.status is StatusPartida.INICIO:
@@ -304,8 +295,6 @@ class Partida:
         #motivo: oq o jogador removido ve
         #evento: oq os outros jogadores veem
 
-        if token is None or token not in self.sessoes:
-                raise SessaoInvalida("Sem sessão válida")
         usuario = self.sessoes[token]
         
         del self.sessoes[token]
@@ -343,11 +332,10 @@ class Partida:
         return {"mensagem": motivo} 
     
     
-    def sair_da_partida(self, response: Response , sessao: str):
+    def sair_da_partida(self, sessao: str):
         nome = self.sessoes[sessao].nome if sessao in self.sessoes else ""
         resultado = self.remover_jogador(sessao, tipo = "saiu", motivo = "Você saiu da partida", evento = f"{nome} saiu da partida")
         self.removidos.pop(sessao, None)
-        response.delete_cookie("sessao")
         return resultado
 
       
