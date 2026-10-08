@@ -9,7 +9,7 @@ import asyncio
 import secrets
 from contextlib import asynccontextmanager
 
-from classes import Partida, Rodada, Jogada, Turno, Jogador
+from dominio.partida import Partida, Rodada, Jogada, Turno, Jogador
 from dominio.enums import StatusPartida, StatusRodada
 from dominio.config import *
 
