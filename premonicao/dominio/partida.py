@@ -294,6 +294,8 @@ class Partida:
     def remover_jogador(self, token: str, tipo: str, motivo: str, evento: str):
         #motivo: oq o jogador removido ve
         #evento: oq os outros jogadores veem
+        if token is None or token not in self.sessoes:
+            return {"mensagem": "Sessão inválida"}
 
         usuario = self.sessoes[token]
         
