@@ -18,7 +18,7 @@ from dominio.jogada import Jogada
 from dominio.jogador import Jogador
 from dominio.rodada import Rodada
 from dominio.turno import Turno, ordem_a_partir_de
-from dominio.erros import SalaCheia, SessaoInvalida
+
 
 def numero_de_rodadas_valido(jogo: Partida, n : int )-> bool:
     if(n <= 0):
@@ -105,36 +105,36 @@ class Partida:
 
     def entrar(self, nome: str, sessao: str | None ):
         
-            if sessao is not None and sessao in self.sessoes:
-                print("Jogador ja está na partida")
-                return {"mensagem" : "Jogador ja está na partida"}, None
+        if sessao is not None and sessao in self.sessoes:
+                
+            return {"mensagem" : "Jogador ja está na partida"}, None
             
-            if len(self.sessoes) >= MAX_JOGADORES:
-               #raise SalaCheia("Sala Cheia")
-               return {"mensagem" : "Sala cheia"}, None
+        if len(self.sessoes) >= MAX_JOGADORES:
+            #raise SalaCheia("Sala Cheia")
+            return {"mensagem" : "Sala cheia"}, None
 
-            nome_final = f"Jogador {self.player_id}" if nome == "Jogador" else nome
-            if nome_final in [j.nome for j in self.sessoes.values()]:
-                return {"mensagem" : "Nome ja está em uso, escolha outro"}, None
+        nome_final = f"Jogador {self.player_id}" if nome == "Jogador" else nome
+        if nome_final in [j.nome for j in self.sessoes.values()]:
+            return {"mensagem" : "Nome ja está em uso, escolha outro"}, None
             
-            if len(nome_final) > MAX_TAMANHO_NOME:
-                return {"mensagem" : "Nome excede o limite de 20 caracteres"}, None
+        if len(nome_final) > MAX_TAMANHO_NOME:
+            return {"mensagem" : f"Nome excede o limite de {MAX_TAMANHO_NOME} caracteres"}, None
 
-            if self.status is StatusPartida.INICIO:
-                token = secrets.token_urlsafe(BYTES_TOKEN_SESSAO) # gerando um token aleatorio
-                novo_jogador = Jogador(self.player_id, nome)
-                self.player_id += 1
+        if self.status is StatusPartida.INICIO:
+            token = secrets.token_urlsafe(BYTES_TOKEN_SESSAO) # gerando um token aleatorio
+            novo_jogador = Jogador(self.player_id, nome)
+            self.player_id += 1
                 
-                if not any(j.admin for j in self.sessoes.values()):
-                    novo_jogador.admin = True
+            if not any(j.admin for j in self.sessoes.values()):
+                novo_jogador.admin = True
                 
-                self.sessoes[token] = novo_jogador # criando uma correspondencia [token : Jogador ]no dicionario sessoes 
+            self.sessoes[token] = novo_jogador # criando uma correspondencia [token : Jogador ]no dicionario sessoes 
                 
-                self.registrar_evento("entrou", f"{novo_jogador.nome} entrou na partida", novo_jogador.id)
+            self.registrar_evento("entrou", f"{novo_jogador.nome} entrou na partida", novo_jogador.id)
                 
-                return {"mensagem": f"{novo_jogador.nome} entrou no jogo"}, token
+            return {"mensagem": f"{novo_jogador.nome} entrou no jogo"}, token
             
-            return {"mensagem": "Jogo já está em andamento, não é possível entrar"}, None
+        return {"mensagem": "Jogo já está em andamento, não é possível entrar"}, None
 
     def status_completo(self):
         if self.status is StatusPartida.INICIO:
