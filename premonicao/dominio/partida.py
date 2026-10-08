@@ -3,7 +3,7 @@ from __future__ import annotations
 import secrets
 import time
 
-from fastapi import HTTPException, Response  #preciso dar um jeito de tirar daqui
+from fastapi import  Response  #preciso dar um jeito de tirar daqui
 
 from dominio.config import (
     BONUS_ACERTO_PALPITE,
@@ -21,7 +21,7 @@ from dominio.jogada import Jogada
 from dominio.jogador import Jogador
 from dominio.rodada import Rodada
 from dominio.turno import Turno, ordem_a_partir_de
-
+from dominio.erros import SalaCheia, SessaoInvalida
 
 def numero_de_rodadas_valido(jogo: Partida, n : int )-> bool:
     if(n <= 0):
@@ -113,7 +113,7 @@ class Partida:
                     return {"mensagem" : "Jogador ja está na partida"}
             
             if len(self.sessoes) >= MAX_JOGADORES:
-                raise HTTPException(409, "Sala cheia")
+                raise SalaCheia("Sala Cheia")
 
             nome_final = f"Jogador {self.player_id}" if nome == "Jogador" else nome
             if nome_final in [j.nome for j in self.sessoes.values()]:
@@ -305,7 +305,7 @@ class Partida:
         #evento: oq os outros jogadores veem
 
         if token is None or token not in self.sessoes:
-                raise HTTPException(status_code = 401, detail = "Sem sessão válida")
+                raise SessaoInvalida("Sem sessão válida")
         usuario = self.sessoes[token]
         
         del self.sessoes[token]
