@@ -1,7 +1,8 @@
 from __future__ import annotations
-from baralho import Deck, Carta
-from config import *
-from enum import Enum
+from premonicao.dominio.baralho import Deck, Carta
+from premonicao.dominio.config import *
+from premonicao.dominio.enums import StatusPartida, StatusRodada
+from premonicao.dominio.jogador import Jogador
 import secrets
 import time
 from fastapi import  Response, HTTPException
@@ -34,24 +35,7 @@ def ordem_a_partir_de(mesa: list[Jogador], inicio: int)-> list[Jogador]:
     inicio %= len(mesa)
     return mesa[inicio:] + mesa[:inicio]
     
-class Jogador:
-    def __init__(self, id: int, nome: str = "Jogador"):
 
-
-        self.nome: str = (f"Jogador {id}"if nome == "Jogador" else nome)
-        self.id : int = id
-
-        
-        self.admin: bool = False
-        self.pontos: int = 0
-        
-        self.ultima_atividade_turno: float | None = None
-        self.ultimo_momento_online = time.monotonic()
-
-        self.mao = Deck("Mão")
-        self.mao.cartas = [] 
-        
-        
 class Jogada:
     turno_jogada: Turno # setado na função nova_jogada da rodada
     def __init__(self, turno_jogada: Turno):
@@ -60,17 +44,11 @@ class Jogada:
         self.vencedor: Jogador | None = None
         
 
-class status_rodada(Enum):
-    PALPITES = 1
-    JOGADAS = 2
-    FINAL = 3
-
-
 class Rodada:
     
     
     def __init__(self, turno_palpites: Turno, n_cartas: int):
-        self.status: str = status_rodada.PALPITES  
+        self.status: str = StatusRodada.PALPITES  
         self.bolo = Deck("Bolo")
         self.bolo.construir_deck(valores = valores_especificos)
         self.bolo.embaralhar()
@@ -96,7 +74,7 @@ class Rodada:
     def fazer_palpite(self, palpite: int, usuario: Jogador):
         
         
-        if self.status is not status_rodada.PALPITES:
+        if self.status is not StatusRodada.PALPITES:
             return {"mensagem": "Rodada não está na fase de palpites"} 
             
         if usuario is not self.turno_palpites.atual:
@@ -121,7 +99,7 @@ class Rodada:
             return {"mensagem": f"A soma dos palpites não pode ser igual à quantidade de cartas da rodada, você não pode dar o palpite {palpite}"}
         
         self.palpites[usuario] = palpite
-        self.status = status_rodada.JOGADAS
+        self.status = StatusRodada.JOGADAS
         self.nova_jogada()
         return {"mensagem": "Palpite feito com sucesso, hora de jogar"}
 
@@ -146,17 +124,12 @@ def placar_da_rodada(r: Rodada) -> list[dict]:
     return [{"nome": j.nome, "palpite": r.palpites.get(j), "vitorias": r.vitorias[j]} for j in r.turno_palpites.ordem]
     
 
-class status_partida(Enum):
-    INICIO = 1
-    RODADAS = 2
-    FINAL = 3
-
 valores_especificos = VALORES_PADRAO.copy()
 valores_especificos["A"] = VALOR_AS
 
 class Partida:
     def __init__(self):
-        self.status: str = status_partida.INICIO
+        self.status: str = StatusPartida.INICIO
         self.sessoes: dict[str, Jogador] = {}
         self.mesa: list[Jogador] = [] #disposicao dos jogadores na mesa
         self.numero_de_rodadas: int = 0
@@ -183,11 +156,11 @@ class Partida:
 
     def jogador_da_vez(self) -> Jogador | None:
         r = self.rodada_atual
-        if self.status is not status_partida.RODADAS or r is None:
+        if self.status is not StatusPartida.RODADAS or r is None:
             return None
-        if r.status is status_rodada.PALPITES:
+        if r.status is StatusRodada.PALPITES:
             return r.turno_palpites.atual
-        if r.status is status_rodada.JOGADAS and r.jogada_atual:
+        if r.status is StatusRodada.JOGADAS and r.jogada_atual:
             return r.jogada_atual.turno_jogada.atual
         return None
 
@@ -206,7 +179,7 @@ class Partida:
         for j in self.sessoes.values():
             j.pontos = 0
             j.mao.cartas = []
-        self.status = status_partida.INICIO
+        self.status = StatusPartida.INICIO
         self.mesa = []
         self.numero_de_rodadas = 0
         self.rodada_atual = None
@@ -233,7 +206,7 @@ class Partida:
             if len(nome_final) > MAX_TAMANHO_NOME:
                 return {"mensagem" : "Nome excede o limite de 20 caracteres"}
 
-            if self.status is status_partida.INICIO:
+            if self.status is StatusPartida.INICIO:
                 token = secrets.token_urlsafe(BYTES_TOKEN_SESSAO) # gerando um token aleatorio
                 novo_jogador = Jogador(self.player_id, nome)
                 self.player_id += 1
@@ -257,10 +230,10 @@ class Partida:
             return {"mensagem": "Jogo já está em andamento, não é possível entrar"}
 
     def status_completo(self):
-        if self.status is status_partida.INICIO:
+        if self.status is StatusPartida.INICIO:
             return {"status": self.status.name, "mensagem": f"Partida ainda não começou, {len(self.sessoes)} jogador(es) na sala"}
         
-        if self.status is status_partida.FINAL:
+        if self.status is StatusPartida.FINAL:
             return {"status": self.status.name, "mensagem": "Partida encerrada", "aviso": self.aviso}
         
         rodada = self.rodada_atual
@@ -274,10 +247,10 @@ class Partida:
                       }
         jogador_da_vez = self.jogador_da_vez()
         
-        if rodada.status is status_rodada.PALPITES:
+        if rodada.status is StatusRodada.PALPITES:
             estado["vez_de"] = jogador_da_vez.nome
             estado["mensagem"] = f"Partida está na rodada {numero_rodada}, na fase de palpites, na vez de {jogador_da_vez.nome}"
-        elif rodada.status is status_rodada.JOGADAS:
+        elif rodada.status is StatusRodada.JOGADAS:
             if rodada.jogada_atual is not None and rodada.jogada_atual.turno_jogada.atual is not None:
                 estado["vez_de"] = jogador_da_vez.nome
                 estado["mensagem"] = f"Partida está na rodada {numero_rodada}, na fase de jogadas, na vez de {jogador_da_vez.nome}"
@@ -300,8 +273,8 @@ class Partida:
         if numero_de_rodadas_valido(self, n_rodadas) is False:
             return {"mensagem": "Numero de rodadas invalido"}
             
-        if self.status is status_partida.INICIO:
-            self.status = status_partida.RODADAS
+        if self.status is StatusPartida.INICIO:
+            self.status = StatusPartida.RODADAS
             self.numero_de_rodadas = n_rodadas
             self.mesa = list(self.sessoes.values())
             self.nova_rodada(1)
@@ -313,12 +286,12 @@ class Partida:
     
     def fazer_jogada(self, indice: int, usuario: Jogador):
     
-        if self.status is not status_partida.RODADAS:
+        if self.status is not StatusPartida.RODADAS:
             return {"mensagem": "Partida não está na fase de rodadas"} 
         
         rodada = self.rodada_atual
         
-        if rodada.status is not status_rodada.JOGADAS:
+        if rodada.status is not StatusRodada.JOGADAS:
             return {"mensagem": "Rodada não está na fase de jogadas"} 
         
         jogada = rodada.jogada_atual
@@ -368,7 +341,7 @@ class Partida:
             
             return {"mensagem": mensagem, "resultados": resultados }
     
-        self.status = status_partida.FINAL
+        self.status = StatusPartida.FINAL
         mensagem = mensagem + "\nFim da partida\n"
         resultados["pontuações"] = {j.nome: j.pontos for j in self.mesa} 
         return {"mensagem": mensagem, "resultados": resultados}
@@ -395,16 +368,16 @@ class Partida:
     def encerrar(self, usuario: Jogador):
         if not usuario.admin:
             return {"mensagem": "Apenas o administrador pode encerrar a partida"}
-        if self.status is status_partida.FINAL:
+        if self.status is StatusPartida.FINAL:
             return {"mensagem": "A partida já está encerrada"}
-        self.status = status_partida.FINAL
+        self.status = StatusPartida.FINAL
         return {"mensagem": "Partida encerrada pelo administrador"}
     
     
     def nova_partida(self, usuario):
         if not usuario.admin:
             return {"mensagem": "Apenas o administrador pode começar uma nova partida"}
-        if self.status is not status_partida.FINAL:
+        if self.status is not StatusPartida.FINAL:
             return {"mensagem": "Encerre a partida atual antes de começar outra"}
         self.reiniciar()
         return {"mensagem": "Nova partida: aguardando jogadores"}
@@ -438,11 +411,11 @@ class Partida:
         if usuario in self.mesa:
             self.mesa.remove(usuario)
             
-            if self.status == status_partida.RODADAS:
+            if self.status == StatusPartida.RODADAS:
         
                 if (len(self.mesa) < MIN_JOGADORES):
                     
-                    self.status = status_partida.FINAL
+                    self.status = StatusPartida.FINAL
                     self.aviso = f"{evento} e não há jogadores o suficiente para continuar. Fim da partida"
                 
                 else:

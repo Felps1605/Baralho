@@ -9,8 +9,9 @@ import asyncio
 import secrets
 from contextlib import asynccontextmanager
 
-from classes import Partida, Rodada, Jogada, Turno, Jogador, status_partida, status_rodada
-from config import *
+from classes import Partida, Rodada, Jogada, Turno, Jogador
+from premonicao.dominio.enums import StatusPartida, StatusRodada
+from premonicao.dominio.config import *
 
 async def vigiar_inativos():
     while True:
@@ -129,7 +130,7 @@ async def iniciar_partida( n_rodadas: int = N_RODADAS_PADRAO, jogo: Partida = De
 @app.post("/sala/{codigo}/rodada/palpite")
 def fazer_palpite(palpite: int, jogo: Partida = Depends(sala_atual), usuario: Jogador = Depends(usuario_atual)):
     #provavelmente deveria limpar isso
-    return jogo.rodada_atual.fazer_palpite(palpite, usuario) if jogo.status == status_partida.RODADAS else {"mensagem": "Só é possível fazer palpites durante a fase de rodadas"}
+    return jogo.rodada_atual.fazer_palpite(palpite, usuario) if jogo.status == StatusPartida.RODADAS else {"mensagem": "Só é possível fazer palpites durante a fase de rodadas"}
     
 @app.post("/sala/{codigo}/rodada/jogar")
 def fazer_jogada(indice: int, jogo: Partida = Depends(sala_atual), usuario: Jogador = Depends(usuario_atual)):
