@@ -1,6 +1,6 @@
 import random
 import sys
-from premonicao.dominio.config import *
+from dominio.config import *
 
 
 class Carta:

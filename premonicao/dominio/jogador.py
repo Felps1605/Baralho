@@ -1,5 +1,5 @@
 import time
-from premonicao.dominio.baralho import Deck
+from dominio.baralho import Deck
 
 
 class Jogador:

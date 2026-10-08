@@ -1,8 +1,8 @@
 from __future__ import annotations
-from premonicao.dominio.baralho import Deck, Carta
-from premonicao.dominio.config import *
-from premonicao.dominio.enums import StatusPartida, StatusRodada
-from premonicao.dominio.jogador import Jogador
+from dominio.baralho import Deck, Carta
+from dominio.config import *
+from dominio.enums import StatusPartida, StatusRodada
+from dominio.jogador import Jogador
 import secrets
 import time
 from fastapi import  Response, HTTPException

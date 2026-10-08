@@ -10,8 +10,8 @@ import secrets
 from contextlib import asynccontextmanager
 
 from classes import Partida, Rodada, Jogada, Turno, Jogador
-from premonicao.dominio.enums import StatusPartida, StatusRodada
-from premonicao.dominio.config import *
+from dominio.enums import StatusPartida, StatusRodada
+from dominio.config import *
 
 async def vigiar_inativos():
     while True:
