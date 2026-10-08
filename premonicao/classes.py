@@ -4,21 +4,12 @@ from dominio.config import *
 from dominio.enums import StatusPartida, StatusRodada
 from dominio.jogador import Jogador
 from dominio.turno import Turno, ordem_a_partir_de
+from dominio.jogada import Jogada
 import secrets
 import time
 from fastapi import  Response, HTTPException
 from contextlib import asynccontextmanager
 
-
-
-
-class Jogada:
-    turno_jogada: Turno # setado na função nova_jogada da rodada
-    def __init__(self, turno_jogada: Turno):
-        self.turno_jogada: Turno = turno_jogada
-        self.monte: Deck = Deck() 
-        self.vencedor: Jogador | None = None
-        
 
 class Rodada:
     
