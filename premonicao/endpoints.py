@@ -13,7 +13,13 @@ from contextlib import asynccontextmanager
 from dominio.jogador import Jogador
 from dominio.partida import Partida
 from dominio.enums import StatusPartida
-from dominio.config import *
+from dominio.config import (
+                            INTERVALO_VIGIA, LIMITE_TURNO, LIMITE_OFFLINE, LIMITE_SALA_INATIVA,
+                            ALFABETO, TAMANHO_CODIGO_SALA, MAX_TAMANHO_NOME, MIN_TAMANHO_NOME,
+                            N_RODADAS_PADRAO, MIN_JOGADORES, NUMERO_DE_CARTAS_PADRAO, 
+                            AVISO_INATIVIDADE, INTERVALO_MS, MAX_SALAS,
+                            HOST, PORTA_PADRAO, RELOAD
+                            )
 
 async def vigiar_inativos():
     while True:
